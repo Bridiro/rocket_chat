@@ -14,15 +14,17 @@
 
         <div id="room-list">
           <template id="room">
-            <button class="room"></button>
+            <div class="side-room">
+              <button class="room"></button>
+              <button class="remove-room">-</button>
+            </div>
           </template>
         </div>
 
         <form id="new-room">
           <input type="text" name="name" id="name" autocomplete="off"
               placeholder="new room..." maxlength="29"></input>
-          <button type="button" id="add-room">+</button>
-          <button type="button" id="remove-room">-</button>
+          <button type="submit">+</button>
         </form>
       </div>
 

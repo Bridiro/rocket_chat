@@ -53,6 +53,18 @@ button:hover:not(.active) {
   overflow: hidden;
 }
 
+.side-room {
+  width: 100%;
+}
+
+.room {
+  width: 90%;
+}
+
+.remove-room {
+  width: 8%;
+}
+
 #sidebar button.active {
   background: var(--bg-dark);
   color: var(--callout);

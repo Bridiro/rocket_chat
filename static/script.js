@@ -2,8 +2,6 @@ let roomListDiv = document.getElementById("room-list");
 let messagesDiv = document.getElementById("messages");
 let newMessageForm = document.getElementById("new-message");
 let newRoomForm = document.getElementById("new-room");
-let newRoomButton = document.getElementById("add-room");
-let removeRoomButton = document.getElementById("remove-room");
 let statusDiv = document.getElementById("status");
 
 let roomTemplate = document.getElementById("room");
@@ -40,7 +38,9 @@ function addRoom(name) {
 
   var node = roomTemplate.content.cloneNode(true);
   var room = node.querySelector(".room");
+  var button = node.querySelector(".remove-room");
   room.addEventListener("click", () => changeRoom(name));
+  button.addEventListener("click", () => removeRoom(name));
   room.textContent = name;
   room.dataset.name = name;
   roomListDiv.appendChild(node);
@@ -62,7 +62,9 @@ function removeRoom(name) {
     changeRoom(rooms[1].innerHTML);
   else if (STATE.room == name) changeRoom(rooms[0].innerHTML);
 
-  var node = roomListDiv.querySelector(`.room[data-name='${name}']`);
+  var node = roomListDiv.querySelector(
+    `.room[data-name='${name}']`
+  ).parentElement;
   roomListDiv.removeChild(node);
   delete STATE.rooms[name];
   return true;
@@ -78,11 +80,20 @@ function changeRoom(name) {
       .classList.add("active");
   } else {
     var newRoom = roomListDiv.querySelector(`.room[data-name='${name}']`);
+    var parentNewRoom = newRoom.parentElement;
+    var newRoomRemove = parentNewRoom.querySelector(".remove-room");
     var oldRoom = roomListDiv.querySelector(`.room[data-name='${STATE.room}']`);
+    var parentOldRoom = oldRoom.parentElement;
+    var oldRoomRemove = parentOldRoom.querySelector(".remove-room");
     if (!newRoom || !oldRoom) return;
 
     oldRoom.classList.remove("active");
     newRoom.classList.add("active");
+    oldRoomRemove.classList.remove("active");
+    newRoomRemove.classList.add("active");
+
+    oldRoomRemove.style.display = "none";
+    newRoomRemove.style.display = "inline";
   }
 
   STATE.room = name;
@@ -176,7 +187,7 @@ function init() {
   });
 
   // Set up the new room handler.
-  newRoomButton.addEventListener("click", (e) => {
+  newRoomForm.addEventListener("submit", (e) => {
     e.preventDefault();
 
     const room = roomNameField.value;
@@ -184,17 +195,6 @@ function init() {
 
     roomNameField.value = "";
     if (!addRoom(room)) return;
-  });
-
-  // Set up the remove room handler.
-  removeRoomButton.addEventListener("click", (e) => {
-    e.preventDefault();
-
-    const room = roomNameField.value;
-    if (!room) return;
-
-    roomNameField.value = "";
-    if (!removeRoom(room)) return;
   });
 
   // Subscribe to server-sent events.
