@@ -1,15 +1,19 @@
 let roomListDiv = document.getElementById("room-list");
 let messagesDiv = document.getElementById("messages");
 let newMessageForm = document.getElementById("new-message");
+let newRoomButton = document.getElementById("new-room-button");
 let newRoomForm = document.getElementById("new-room");
 let statusDiv = document.getElementById("status");
+let popup = document.getElementById("popup");
+let addRoomForm = document.getElementById("add-room");
+let cancelPopupButton = document.getElementById("add-cancel");
+let roomNameField = document.getElementById("new-room-name");
 
 let roomTemplate = document.getElementById("room");
 let messageTemplate = document.getElementById("message");
 
 let messageField = newMessageForm.querySelector("#message");
 let usernameField = newMessageForm.querySelector("#username");
-let roomNameField = newRoomForm.querySelector("#name");
 
 var STATE = {
   room: "lobby",
@@ -163,6 +167,16 @@ function setConnectedStatus(status) {
   statusDiv.className = status ? "connected" : "reconnecting";
 }
 
+// Open popup
+function openPopup() {
+  popup.style.display = "block";
+}
+
+// Close popup
+function closePopup() {
+  popup.style.display = "none";
+}
+
 // Let's go! Initialize the world.
 function init() {
   addRoom("lobby");
@@ -186,15 +200,31 @@ function init() {
     }
   });
 
-  // Set up the new room handler.
-  newRoomForm.addEventListener("submit", (e) => {
+  // Set up the open popup handler.
+  newRoomButton.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    openPopup();
+  });
+
+  // Set up the add room handler
+  addRoomForm.addEventListener("submit", (e) => {
     e.preventDefault();
 
     const room = roomNameField.value;
     if (!room) return;
 
     roomNameField.value = "";
+    closePopup();
     if (!addRoom(room)) return;
+  });
+
+  // Set up the close popup handler
+  cancelPopupButton.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    roomNameField.value = "";
+    closePopup();
   });
 
   // Subscribe to server-sent events.

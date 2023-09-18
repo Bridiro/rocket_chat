@@ -9,6 +9,15 @@
   </head>
   <body>
     <main>
+      <div id="popup">
+        <form id="add-room">
+          <input type="text" name="name" id="new-room-name" autocomplete="off"
+              placeholder="new room..." maxlength="29"></input>
+          <button type="submit">Add</button>
+          <button type="button" id="add-cancel">Cancel</button>
+        </form>
+      </div>
+
       <div id="sidebar">
         <div id="status" class="pending"></div>
 
@@ -22,14 +31,11 @@
         </div>
 
         <form id="new-room">
-          <input type="text" name="name" id="name" autocomplete="off"
-              placeholder="new room..." maxlength="29"></input>
-          <button type="submit">+</button>
+          <button type="button" id="new-room-button">+</button>
         </form>
       </div>
 
       <div id="content">
-
         <div id="messages">
           <template id="message">
             <div class="message">

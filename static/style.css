@@ -149,13 +149,12 @@ form button {
   flex-direction: row;
 }
 
-#new-room input:focus,
 #new-room button:hover {
   filter: brightness(1.2);
 }
 
-#new-room input {
-  flex: 8 80%;
+#add-room input {
+  flex: 8 100%;
   width: 20%;
   background-color: var(--callout-dark);
   color: #fff;
@@ -198,4 +197,47 @@ form button {
 #status.reconnecting {
   background-color: red;
   color: #fff;
+}
+
+#popup {
+  top: 50%;
+  left: 50%;
+  width: 30em;
+  height: 14em;
+  margin-top: -9em;
+  margin-left: -15em;
+  background-color: var(--bg-light);
+  position: fixed;
+  display: none;
+  padding: 20px;
+}
+
+#add-room {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: auto;
+}
+
+#add-room input {
+  width: 100%;
+  top: 0;
+  position: absolute;
+}
+
+#add-button {
+  width: 100%;
+  position: absolute;
+  top: 120px;
+}
+
+#add-cancel {
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+}
+
+#add-room input:focus,
+#add-room button:hover {
+  filter: brightness(1.2);
 }
