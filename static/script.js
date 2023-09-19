@@ -188,6 +188,7 @@ function init() {
     const room = STATE.room;
     const message = messageField.value;
     const username = usernameField.value || "guest";
+    console.log(room, message, username);
     if (!message || !username) return;
 
     if (STATE.connected) {
@@ -212,9 +213,20 @@ function init() {
     e.preventDefault();
 
     const room = roomNameField.value;
+    const password = "12345678";
     if (!room) return;
 
     roomNameField.value = "";
+
+    if (STATE.connected) {
+      fetch("/add-room", {
+        method: "POST",
+        body: new URLSearchParams({ room, password }),
+      }).then((response) => {
+        if (response.ok) console.log("OK");
+      });
+    }
+
     closePopup();
     if (!addRoom(room)) return;
   });

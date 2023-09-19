@@ -21,9 +21,21 @@ struct Message {
     pub message: String,
 }
 
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+struct Room {
+    pub room: String,
+    pub password: String,
+}
+
 #[post("/message", data = "<form>")]
 fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
     let _res = queue.send(form.into_inner());
+}
+
+#[post("/add-room", data = "<form>")]
+fn add_room(form: Form<Room>) {
+    println!("{:?}", form.into_inner());
 }
 
 #[get("/events")]
@@ -50,6 +62,6 @@ async fn events(queue: &State<Sender<Message>>, mut end: Shutdown) -> EventStrea
 fn rocket() -> _ {
     rocket::build()
         .manage(channel::<Message>(1024).0)
-        .mount("/", routes![post, events])
+        .mount("/", routes![post, add_room, events])
         .mount("/", FileServer::from(relative!("static")))
 }
