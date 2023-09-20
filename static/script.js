@@ -8,6 +8,7 @@ let popup = document.getElementById("popup");
 let addRoomForm = document.getElementById("add-room");
 let cancelPopupButton = document.getElementById("add-cancel");
 let roomNameField = document.getElementById("new-room-name");
+let roomDataList = document.getElementById("existing-rooms");
 
 let roomTemplate = document.getElementById("room");
 let messageTemplate = document.getElementById("message");
@@ -222,9 +223,11 @@ function init() {
       fetch("/add-room", {
         method: "POST",
         body: new URLSearchParams({ room, password }),
-      }).then((response) => {
-        if (response.ok) console.log("OK");
-      });
+      })
+        .then((response) => response.text())
+        .then((data) => {
+          console.log(data);
+        });
     }
 
     closePopup();
@@ -237,6 +240,30 @@ function init() {
 
     roomNameField.value = "";
     closePopup();
+  });
+
+  // Set up handler to show suggestions on new room input
+  roomNameField.addEventListener("input", (e) => {
+    e.preventDefault();
+
+    const name = roomNameField.value;
+
+    if (STATE.connected) {
+      fetch("/search-rooms", {
+        method: "POST",
+        body: new URLSearchParams({ name }),
+      })
+        .then((response) => response.text())
+        .then((data) => {
+          console.log(data);
+          roomDataList.innerHTML = "";
+          var options = "";
+          JSON.parse(data).forEach((room) => {
+            options += '<option value="' + room + '" >';
+          });
+          roomDataList.innerHTML = options;
+        });
+    }
   });
 
   // Subscribe to server-sent events.
