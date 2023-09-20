@@ -36,18 +36,14 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
 
 #[post("/add-room", data = "<form>")]
 fn add_room(form: Form<Room>) -> String {
-    match hash_password("12345678".to_string()) {
-        Some(hashed) => {
-            let valid = confront_password(hashed, form.into_inner().password);
-            if valid {
-                format!("Password valid")
-            } else {
-                format!("Wrong password")
-            }
-        }
-        _ => {
-            format!("Unable to process password")
-        }
+    let valid = confront_password(
+        hash_password("12345678".to_string()),
+        form.into_inner().password,
+    );
+    if valid {
+        format!("Password valid")
+    } else {
+        format!("Wrong password")
     }
 }
 
@@ -94,13 +90,11 @@ async fn events(queue: &State<Sender<Message>>, mut end: Shutdown) -> EventStrea
 }
 
 // Hash a passed password with SHA-512 and returns a String Option
-fn hash_password(password: String) -> Option<String> {
+fn hash_password(password: String) -> String {
     let mut hasher = Sha512::new();
     hasher.update(password);
     let result = hasher.finalize();
-    match String::from_utf8_lossy(&result).to_string() {
-        hashed => Some(hashed),
-    }
+    String::from_utf8_lossy(&result).to_string()
 }
 
 // Confront a password hash and a password, returns a bool
@@ -108,9 +102,7 @@ fn confront_password(hash: String, password: String) -> bool {
     let mut hasher = Sha512::new();
     hasher.update(password);
     let result = hasher.finalize();
-    match String::from_utf8_lossy(&result).to_string() {
-        hashed => hash == hashed,
-    }
+    String::from_utf8_lossy(&result).to_string() == hash
 }
 
 #[launch]
