@@ -6,9 +6,12 @@ let newRoomForm = document.getElementById("new-room");
 let statusDiv = document.getElementById("status");
 let popup = document.getElementById("popup");
 let addRoomForm = document.getElementById("add-room");
+let addRoomButton = document.getElementById("add-button");
 let cancelPopupButton = document.getElementById("add-cancel");
 let roomNameField = document.getElementById("new-room-name");
 let roomDataList = document.getElementById("existing-rooms");
+var newRoomPassword = document.getElementById("new-room-password");
+var checkPassword = document.getElementById("check-password");
 
 let roomTemplate = document.getElementById("room");
 let messageTemplate = document.getElementById("message");
@@ -21,6 +24,8 @@ var STATE = {
   rooms: {},
   connected: false,
 };
+
+var AVAILABLE_ROOMS = {};
 
 // Generate a color from a "hash" of a string. Thanks, internet.
 function hashColor(str) {
@@ -178,6 +183,14 @@ function closePopup() {
   popup.style.display = "none";
 }
 
+function cleanPopup() {
+  newRoomPassword.disabled = true;
+  checkPassword.checked = false;
+  checkPassword.disabled = false;
+  roomNameField.value = "";
+  newRoomPassword.value = "";
+}
+
 // Let's go! Initialize the world.
 function init() {
   addRoom("lobby");
@@ -202,9 +215,26 @@ function init() {
     }
   });
 
-  // Set up the open popup handler.
+  // Set up the open popup handler and get available rooms.
   newRoomButton.addEventListener("click", (e) => {
     e.preventDefault();
+
+    if (STATE.connected) {
+      fetch("/search-rooms", {
+        method: "POST",
+      })
+        .then((response) => response.text())
+        .then((data) => {
+          AVAILABLE_ROOMS = JSON.parse(data);
+          console.log(AVAILABLE_ROOMS);
+          roomDataList.innerHTML = "";
+          var options = "";
+          AVAILABLE_ROOMS.forEach((room) => {
+            options += '<option value="' + room.room + '" >';
+          });
+          roomDataList.innerHTML = options;
+        });
+    }
 
     openPopup();
   });
@@ -212,57 +242,73 @@ function init() {
   // Set up the add room handler
   addRoomForm.addEventListener("submit", (e) => {
     e.preventDefault();
-
+    const require_password = checkPassword.checked;
     const room = roomNameField.value;
-    const password = "12345678";
-    if (!room) return;
+    const password = require_password ? newRoomPassword.value : "";
+    const hidden = false;
+    if (!room && !(require_password && password)) return;
 
     roomNameField.value = "";
 
     if (STATE.connected) {
       fetch("/add-room", {
         method: "POST",
-        body: new URLSearchParams({ room, password }),
+        body: new URLSearchParams({ room, password, require_password, hidden }),
       })
         .then((response) => response.text())
         .then((data) => {
           console.log(data);
+          if (data == "GRANTED") {
+            cleanPopup();
+            closePopup();
+            if (!addRoom(room)) return;
+          }
+          cleanPopup();
+          return;
         });
     }
-
-    closePopup();
-    if (!addRoom(room)) return;
   });
 
   // Set up the close popup handler
   cancelPopupButton.addEventListener("click", (e) => {
     e.preventDefault();
 
-    roomNameField.value = "";
+    cleanPopup();
     closePopup();
   });
 
-  // Set up handler to show suggestions on new room input
+  // Set up handler to able or disable password input from list
   roomNameField.addEventListener("input", (e) => {
     e.preventDefault();
 
-    const name = roomNameField.value;
+    let roomName = roomNameField.value;
+    let exists = null;
+    AVAILABLE_ROOMS.forEach((roomLoop) => {
+      if (roomName == roomLoop.room) {
+        exists = roomLoop;
+      }
+    });
 
-    if (STATE.connected) {
-      fetch("/search-rooms", {
-        method: "POST",
-        body: new URLSearchParams({ name }),
-      })
-        .then((response) => response.text())
-        .then((data) => {
-          console.log(data);
-          roomDataList.innerHTML = "";
-          var options = "";
-          JSON.parse(data).forEach((room) => {
-            options += '<option value="' + room + '" >';
-          });
-          roomDataList.innerHTML = options;
-        });
+    if (exists) {
+      addRoomButton.innerHTML = "Join";
+      if (exists.require_password) {
+        newRoomPassword.disabled = false;
+        checkPassword.checked = true;
+        checkPassword.disabled = true;
+      } else {
+        checkPassword.disabled = false;
+      }
+    } else {
+      addRoomButton.innerHTML = "Add";
+    }
+  });
+
+  checkPassword.addEventListener("input", (e) => {
+    e.preventDefault();
+    if (checkPassword.checked) {
+      newRoomPassword.disabled = false;
+    } else {
+      newRoomPassword.disabled = true;
     }
   });
 

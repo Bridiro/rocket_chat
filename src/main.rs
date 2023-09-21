@@ -22,11 +22,40 @@ struct Message {
     pub message: String,
 }
 
-#[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct Room {
     pub room: String,
     pub password: String,
+    pub require_password: bool,
+    pub hidden: bool,
+}
+
+impl Room {
+    fn new(room: String, password: String, require_password: bool, hidden: bool) -> Room {
+        Room {
+            room: room,
+            password: password,
+            require_password: require_password,
+            hidden: hidden,
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct PubRoom {
+    pub room: String,
+    pub require_password: bool,
+}
+
+impl PubRoom {
+    fn new(room: String, require_password: bool) -> PubRoom {
+        PubRoom {
+            room: room,
+            require_password: require_password,
+        }
+    }
 }
 
 #[post("/message", data = "<form>")]
@@ -36,37 +65,89 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
 
 #[post("/add-room", data = "<form>")]
 fn add_room(form: Form<Room>) -> String {
-    let valid = confront_password(
-        hash_password("12345678".to_string()),
-        form.into_inner().password,
-    );
-    if valid {
-        format!("Password valid")
-    } else {
-        format!("Wrong password")
-    }
-}
-
-#[post("/search-rooms", data = "<name>")]
-fn search_rooms(name: Form<String>) -> Json<Vec<String>> {
-    let name = name.into_inner();
+    let room = form.into_inner();
     let rooms = vec![
-        String::from("pazzi"),
-        String::from("maniaci"),
-        String::from("drogati"),
-        String::from("adhd"),
-        String::from("dromedari"),
-        String::from("pastrengo"),
+        Room::new(String::from("pazzi"), String::from(""), false, false),
+        Room::new(
+            String::from("maniaci"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
+        Room::new(
+            String::from("drogati"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
+        Room::new(String::from("adhd"), String::from(""), false, false),
+        Room::new(String::from("dromedari"), String::from(""), false, true),
+        Room::new(
+            String::from("pastrengo"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
     ];
 
-    let mut matched: Vec<String> = Vec::new();
-    for room in rooms {
-        if room.len() >= name.len() && room[..name.len()] == name {
-            matched.push(room);
+    let mut contained = false;
+    for r in rooms {
+        if r.room == room.room {
+            contained = true;
         }
     }
 
-    Json(matched)
+    if contained {
+        let valid = if room.require_password {
+            confront_password(hash_password("12345678".to_string()), room.password.clone())
+        } else {
+            true
+        };
+        if valid {
+            // TODO: gain access to room
+            format!("GRANTED")
+        } else {
+            // TODO: reject access to room
+            format!("REJECTED")
+        }
+    } else {
+        // TODO: add room to db
+        format!("GRANTED")
+    }
+}
+
+#[post("/search-rooms")]
+fn search_rooms() -> Json<Vec<PubRoom>> {
+    let rooms = vec![
+        Room::new(String::from("pazzi"), String::from(""), false, false),
+        Room::new(
+            String::from("maniaci"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
+        Room::new(
+            String::from("drogati"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
+        Room::new(String::from("adhd"), String::from(""), false, false),
+        Room::new(String::from("dromedari"), String::from(""), false, true),
+        Room::new(
+            String::from("pastrengo"),
+            String::from("12345678"),
+            true,
+            false,
+        ),
+    ];
+
+    let pub_rooms = rooms
+        .iter()
+        .map(|room| PubRoom::new(room.room.clone(), room.require_password))
+        .collect::<Vec<PubRoom>>();
+
+    Json(pub_rooms)
 }
 
 #[get("/events")]

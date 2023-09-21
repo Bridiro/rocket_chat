@@ -153,7 +153,8 @@ form button {
   filter: brightness(1.2);
 }
 
-#add-room input {
+#new-room-name,
+#new-room-password {
   flex: 8 100%;
   width: 20%;
   background-color: var(--callout-dark);
@@ -216,13 +217,26 @@ form button {
   width: 100%;
   height: 100%;
   position: relative;
-  overflow: auto;
 }
 
-#add-room input {
+#new-room-name {
   width: 100%;
   top: 0;
   position: absolute;
+}
+
+#new-room-password {
+  width: 80%;
+  position: absolute;
+  top: 50px;
+}
+
+#check-password {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 40px;
+  height: 40px;
 }
 
 #add-button {
