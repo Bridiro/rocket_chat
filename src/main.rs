@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+use diesel::prelude::*;
 use rocket::{
     form::Form,
     fs::{relative, FileServer},
@@ -10,25 +11,26 @@ use rocket::{
     tokio::sync::broadcast::{channel, error::RecvError, Sender},
     Shutdown, State,
 };
+use rocket_chat::models::*;
 use sha2::{Digest, Sha512};
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 struct Message {
     #[field(validate = len(..30))]
-    pub room: String,
+    room: String,
     #[field(validate = len(..20))]
-    pub username: String,
-    pub message: String,
+    username: String,
+    message: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct Room {
-    pub room: String,
-    pub password: String,
-    pub require_password: bool,
-    pub hidden: bool,
+    room: String,
+    password: String,
+    require_password: bool,
+    hidden: bool,
 }
 
 impl Room {
@@ -45,8 +47,8 @@ impl Room {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct PubRoom {
-    pub room: String,
-    pub require_password: bool,
+    room: String,
+    require_password: bool,
 }
 
 impl PubRoom {
@@ -99,7 +101,7 @@ fn add_room(form: Form<Room>) -> String {
 
     if contained {
         let valid = if room.require_password {
-            confront_password(hash_password("12345678".to_string()), room.password.clone())
+            compare_password(hash_password("12345678".to_string()), room.password.clone())
         } else {
             true
         };
@@ -118,7 +120,19 @@ fn add_room(form: Form<Room>) -> String {
 
 #[post("/search-rooms")]
 fn search_rooms() -> Json<Vec<PubRoom>> {
-    let rooms = vec![
+    use rocket_chat::schema::users::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(userss) = users.select(UserDB::as_select()).load(connection) {
+        println!("Displaying {} rooms", userss.len());
+        for room in userss {
+            println!("{}", room.username);
+            println!("{}", room.passwd);
+            println!("-------------------------------");
+        }
+    }
+
+    let stanze = vec![
         Room::new(String::from("pazzi"), String::from(""), false, false),
         Room::new(
             String::from("maniaci"),
@@ -142,7 +156,7 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
         ),
     ];
 
-    let pub_rooms = rooms
+    let pub_rooms = stanze
         .iter()
         .map(|room| PubRoom::new(room.room.clone(), room.require_password))
         .collect::<Vec<PubRoom>>();
@@ -178,8 +192,8 @@ fn hash_password(password: String) -> String {
     String::from_utf8_lossy(&result).to_string()
 }
 
-// Confront a password hash and a password, returns a bool
-fn confront_password(hash: String, password: String) -> bool {
+// Compare a password hash and a password, returns a bool
+fn compare_password(hash: String, password: String) -> bool {
     let mut hasher = Sha512::new();
     hasher.update(password);
     let result = hasher.finalize();
