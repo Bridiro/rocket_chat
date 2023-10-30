@@ -1,5 +1,6 @@
 var STATE = {
     room: "lobby",
+    user: "",
     rooms: {},
     connected: false,
 };
@@ -177,56 +178,89 @@ function closePopup() {
     document.getElementById("popup").style.display = "none";
 }
 
+// Clean the popup fields
 function cleanPopup() {
     document.getElementById("new-room-password").disabled = true;
-    checkPassword.checked = false;
-    checkPassword.disabled = false;
+    document.getElementById("check-password").checked = false;
+    document.getElementById("check-password").disabled = false;
     document.getElementById("new-room-name").value = "";
     document.getElementById("new-room-password").value = "";
 }
 
+// CLose the login
 function closeLogin() {
     document.getElementById("login").style.display = "none";
-}
-
-function checkUserCheck(username, password) {
-    if (STATE.connected) {
-        fetch("/login", {
-            method: "POST",
-            body: new URLSearchParams({
-                username,
-                password,
-            }),
-        })
-            .then((response) => response.text())
-            .then((data) => {
-                console.log(data);
-            });
-    }
 }
 
 // Let's go! Initialize the world.
 function init() {
     addRoom("lobby");
 
+    // Set up handler for the login form
     document.getElementById("login-form").addEventListener("submit", (e) => {
         e.preventDefault();
 
         const username = document.getElementById("login-username").value;
         const password = document.getElementById("login-password").value;
+
+        if (STATE.connected) {
+            fetch("/login", {
+                method: "POST",
+                body: new URLSearchParams({
+                    username,
+                    password,
+                }),
+            })
+                .then((response) => response.text())
+                .then((data) => {
+                    console.log(data);
+                    if (data === "GRANTED") {
+                        document.getElementById("login").style.display = "none";
+                        STATE.user = username;
+                        return;
+                    }
+                    return;
+                });
+        }
     });
 
-    // Set up the form handler.
+    document.getElementById("sign-up-button").addEventListener("click", (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById("login-username").value;
+        const password = document.getElementById("login-password").value;
+
+        if (STATE.connected) {
+            fetch("/signup", {
+                method: "POST",
+                body: new URLSearchParams({
+                    username,
+                    password,
+                }),
+            })
+                .then((response) => response.text())
+                .then((data) => {
+                    console.log(data);
+                    if (data === "GRANTED") {
+                        document.getElementById("login").style.display = "none";
+                        STATE.user = username;
+                        return;
+                    }
+                    return;
+                });
+        }
+    });
+
+    // Set up the handler to post a message.
     document.getElementById("new-message").addEventListener("submit", (e) => {
         e.preventDefault();
 
         const newMessageForm = document.getElementById("new-message");
         let messageField = newMessageForm.querySelector("#message");
-        let usernameField = newMessageForm.querySelector("#username");
 
         const room = STATE.room;
         const message = messageField.value;
-        const username = usernameField.value || "guest";
+        const username = STATE.user;
         console.log(room, message, username);
         if (!message || !username) return;
 
@@ -258,7 +292,9 @@ function init() {
                         roomDataList.innerHTML = "";
                         var options = "";
                         AVAILABLE_ROOMS.forEach((room) => {
-                            options += '<option value="' + room.room + '" >';
+                            options += !room.hidden
+                                ? '<option value="' + room.room + '" >'
+                                : "";
                         });
                         roomDataList.innerHTML = options;
                     });
@@ -270,7 +306,8 @@ function init() {
     // Set up the add room handler
     document.getElementById("add-room").addEventListener("submit", (e) => {
         e.preventDefault();
-        const require_password = checkPassword.checked;
+        const require_password =
+            document.getElementById("check-password").checked;
         const room = document.getElementById("new-room-name").value;
         const password = require_password
             ? document.getElementById("new-room-password").value
@@ -346,6 +383,7 @@ function init() {
         }
     });
 
+    // Set up the handler to able or disable the password field based on the check
     document.getElementById("check-password").addEventListener("input", (e) => {
         e.preventDefault();
         if (document.getElementById("check-password").checked) {
