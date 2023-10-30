@@ -14,6 +14,15 @@ use rocket::{
 use rocket_chat::models::*;
 use sha2::{Digest, Sha512};
 
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct User {
+    #[field(validate = len(..20))]
+    username: String,
+    #[field(validate = len(..30))]
+    password: String,
+}
+
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 struct Message {
@@ -164,6 +173,28 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
     Json(pub_rooms)
 }
 
+#[post("/login", data = "<form>")]
+fn login(form: Form<User>) -> String {
+    let user = form.into_inner();
+    use rocket_chat::schema::users::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(result) = users
+        .limit(1)
+        .filter(username.eq(user.username))
+        .select(passwd)
+        .load::<String>(connection)
+    {
+        if result.len() > 0 && user.password == result[0] {
+            "ALLOWED".to_string()
+        } else {
+            "REJECTED".to_string()
+        }
+    } else {
+        "REJECTED".to_string()
+    }
+}
+
 #[get("/events")]
 async fn events(queue: &State<Sender<Message>>, mut end: Shutdown) -> EventStream![] {
     let mut rx = queue.subscribe();
@@ -204,6 +235,6 @@ fn compare_password(hash: String, password: String) -> bool {
 fn rocket() -> _ {
     rocket::build()
         .manage(channel::<Message>(1024).0)
-        .mount("/", routes![post, add_room, search_rooms, events])
+        .mount("/", routes![post, add_room, search_rooms, login, events])
         .mount("/", FileServer::from(relative!("static")))
 }

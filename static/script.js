@@ -185,9 +185,36 @@ function cleanPopup() {
     document.getElementById("new-room-password").value = "";
 }
 
+function closeLogin() {
+    document.getElementById("login").style.display = "none";
+}
+
+function checkUserCheck(username, password) {
+    if (STATE.connected) {
+        fetch("/login", {
+            method: "POST",
+            body: new URLSearchParams({
+                username,
+                password,
+            }),
+        })
+            .then((response) => response.text())
+            .then((data) => {
+                console.log(data);
+            });
+    }
+}
+
 // Let's go! Initialize the world.
 function init() {
     addRoom("lobby");
+
+    document.getElementById("login-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById("login-username").value;
+        const password = document.getElementById("login-password").value;
+    });
 
     // Set up the form handler.
     document.getElementById("new-message").addEventListener("submit", (e) => {
