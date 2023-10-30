@@ -37,20 +37,9 @@ struct Message {
 #[serde(crate = "rocket::serde")]
 struct Room {
     room: String,
-    password: String,
+    password: Option<String>,
     require_password: bool,
     hidden: bool,
-}
-
-impl Room {
-    fn new(room: String, password: String, require_password: bool, hidden: bool) -> Room {
-        Room {
-            room: room,
-            password: password,
-            require_password: require_password,
-            hidden: hidden,
-        }
-    }
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -58,13 +47,15 @@ impl Room {
 struct PubRoom {
     room: String,
     require_password: bool,
+    hidden: bool,
 }
 
 impl PubRoom {
-    fn new(room: String, require_password: bool) -> PubRoom {
+    fn new(room: String, require_password: bool, hidden: bool) -> PubRoom {
         PubRoom {
             room: room,
             require_password: require_password,
+            hidden: hidden,
         }
     }
 }
@@ -76,101 +67,76 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
 
 #[post("/add-room", data = "<form>")]
 fn add_room(form: Form<Room>) -> String {
+    use diesel::insert_into;
+    use rocket_chat::schema::rooms::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
     let room = form.into_inner();
-    let rooms = vec![
-        Room::new(String::from("pazzi"), String::from(""), false, false),
-        Room::new(
-            String::from("maniaci"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-        Room::new(
-            String::from("drogati"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-        Room::new(String::from("adhd"), String::from(""), false, false),
-        Room::new(String::from("dromedari"), String::from(""), false, true),
-        Room::new(
-            String::from("pastrengo"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-    ];
 
-    let mut contained = false;
-    for r in rooms {
-        if r.room == room.room {
-            contained = true;
+    if let Ok(roomsdb) = rooms.select(RoomDB::as_select()).load(connection) {
+        for r in roomsdb {
+            if r.room_name == room.room {
+                if (room.require_password
+                    && r.passwd == Some(hash_password(room.password.unwrap())))
+                    || !room.require_password
+                {
+                    return format!("GRANTED");
+                } else {
+                    return format!("REJECTED");
+                }
+            }
         }
-    }
 
-    if contained {
-        let valid = if room.require_password {
-            compare_password(hash_password("12345678".to_string()), room.password.clone())
-        } else {
-            true
-        };
-        if valid {
-            // TODO: gain access to room
+        let result = insert_into(rooms)
+            .values((
+                room_name.eq(room.room),
+                rocket_chat::schema::rooms::passwd.eq(hash_password(room.password.unwrap())),
+                require_password.eq(room.require_password),
+                hidden_room.eq(room.hidden),
+            ))
+            .execute(connection);
+        if result == Ok(1) {
             format!("GRANTED")
         } else {
-            // TODO: reject access to room
+            println!("NON INSERITO");
             format!("REJECTED")
         }
     } else {
-        // TODO: add room to db
-        format!("GRANTED")
+        format!("PROBLEM WITH DATABASE")
     }
 }
 
 #[post("/search-rooms")]
 fn search_rooms() -> Json<Vec<PubRoom>> {
-    use rocket_chat::schema::users::dsl::*;
+    use rocket_chat::schema::rooms::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
-    if let Ok(userss) = users.select(UserDB::as_select()).load(connection) {
-        println!("Displaying {} rooms", userss.len());
-        for room in userss {
-            println!("{}", room.username);
-            println!("{}", room.passwd);
+    if let Ok(roomsdb) = rooms.select(RoomDB::as_select()).load(connection) {
+        println!("Displaying {} rooms", roomsdb.len());
+        for room in &roomsdb {
+            println!("{}", room.room_name);
+            println!("{:?}", room.passwd);
+            println!("{}", room.require_password);
+            println!("{}", room.hidden_room);
             println!("-------------------------------");
         }
+
+        let pub_rooms = roomsdb
+            .iter()
+            .map(|room| {
+                PubRoom::new(
+                    room.room_name.clone(),
+                    room.require_password,
+                    room.hidden_room,
+                )
+            })
+            .collect::<Vec<PubRoom>>();
+
+        Json(pub_rooms)
+    } else {
+        let default: Vec<PubRoom> = vec![PubRoom::new("lobby".to_string(), false, false)];
+        Json(default)
     }
-
-    let stanze = vec![
-        Room::new(String::from("pazzi"), String::from(""), false, false),
-        Room::new(
-            String::from("maniaci"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-        Room::new(
-            String::from("drogati"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-        Room::new(String::from("adhd"), String::from(""), false, false),
-        Room::new(String::from("dromedari"), String::from(""), false, true),
-        Room::new(
-            String::from("pastrengo"),
-            String::from("12345678"),
-            true,
-            false,
-        ),
-    ];
-
-    let pub_rooms = stanze
-        .iter()
-        .map(|room| PubRoom::new(room.room.clone(), room.require_password))
-        .collect::<Vec<PubRoom>>();
-
-    Json(pub_rooms)
 }
 
 #[post("/login", data = "<form>")]
@@ -185,13 +151,34 @@ fn login(form: Form<User>) -> String {
         .select(passwd)
         .load::<String>(connection)
     {
-        if result.len() > 0 && user.password == result[0] {
-            "ALLOWED".to_string()
+        if result.len() > 0 && hash_password(user.password) == result[0] {
+            format!("GRANTED")
         } else {
-            "REJECTED".to_string()
+            format!("REJECTED")
         }
     } else {
-        "REJECTED".to_string()
+        format!("REJECTED")
+    }
+}
+
+#[post("/signup", data = "<form>")]
+fn signup(form: Form<User>) -> String {
+    use diesel::insert_into;
+    use rocket_chat::schema::users::dsl::*;
+
+    let user = form.into_inner();
+    let connection = &mut rocket_chat::establish_connection();
+
+    let result = insert_into(users)
+        .values((
+            username.eq(user.username),
+            passwd.eq(hash_password(user.password)),
+        ))
+        .execute(connection);
+    if result == Ok(1) {
+        format!("GRANTED")
+    } else {
+        format!("REJECTED")
     }
 }
 
@@ -223,18 +210,13 @@ fn hash_password(password: String) -> String {
     String::from_utf8_lossy(&result).to_string()
 }
 
-// Compare a password hash and a password, returns a bool
-fn compare_password(hash: String, password: String) -> bool {
-    let mut hasher = Sha512::new();
-    hasher.update(password);
-    let result = hasher.finalize();
-    String::from_utf8_lossy(&result).to_string() == hash
-}
-
 #[launch]
 fn rocket() -> _ {
     rocket::build()
         .manage(channel::<Message>(1024).0)
-        .mount("/", routes![post, add_room, search_rooms, login, events])
+        .mount(
+            "/",
+            routes![post, add_room, search_rooms, login, signup, events],
+        )
         .mount("/", FileServer::from(relative!("static")))
 }

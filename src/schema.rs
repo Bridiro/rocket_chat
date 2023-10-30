@@ -16,8 +16,7 @@ diesel::table! {
     rooms (room_name) {
         #[max_length = 30]
         room_name -> Varchar,
-        #[max_length = 30]
-        passwd -> Nullable<Varchar>,
+        passwd -> Nullable<Text>,
         require_password -> Bool,
         hidden_room -> Bool,
     }
@@ -36,8 +35,7 @@ diesel::table! {
     users (username) {
         #[max_length = 20]
         username -> Varchar,
-        #[max_length = 30]
-        passwd -> Varchar,
+        passwd -> Text,
     }
 }
 
