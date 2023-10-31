@@ -313,6 +313,7 @@ function init() {
             ? document.getElementById("new-room-password").value
             : "";
         const hidden = false;
+        const user = STATUS.user;
         if (room != "" && require_password == true && password === "") return;
 
         document.getElementById("new-room-name").value = "";
@@ -325,6 +326,7 @@ function init() {
                     password,
                     require_password,
                     hidden,
+                    user,
                 }),
             })
                 .then((response) => response.text())
