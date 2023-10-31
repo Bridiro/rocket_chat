@@ -40,6 +40,7 @@ struct Room {
     password: Option<String>,
     require_password: bool,
     hidden: bool,
+    user: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -69,6 +70,7 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
 fn add_room(form: Form<Room>) -> String {
     use diesel::insert_into;
     use rocket_chat::schema::rooms::dsl::*;
+    use rocket_chat::schema::rooms_users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
     let room = form.into_inner();
@@ -80,7 +82,17 @@ fn add_room(form: Form<Room>) -> String {
                     && r.passwd == Some(hash_password(room.password.unwrap())))
                     || !room.require_password
                 {
-                    return format!("GRANTED");
+                    let result = insert_into(rooms_users)
+                        .values((
+                            rocket_chat::schema::rooms_users::room_name.eq(room.room),
+                            user.eq(room.user),
+                        ))
+                        .execute(connection);
+                    if result == Ok(1) {
+                        return format!("GRANTED");
+                    } else {
+                        return format!("REJECTED");
+                    }
                 } else {
                     return format!("REJECTED");
                 }
@@ -89,13 +101,19 @@ fn add_room(form: Form<Room>) -> String {
 
         let result = insert_into(rooms)
             .values((
-                room_name.eq(room.room),
+                rocket_chat::schema::rooms::room_name.eq(room.room.clone()),
                 rocket_chat::schema::rooms::passwd.eq(hash_password(room.password.unwrap())),
                 require_password.eq(room.require_password),
                 hidden_room.eq(room.hidden),
             ))
             .execute(connection);
-        if result == Ok(1) {
+        let result2 = insert_into(rooms_users)
+            .values((
+                rocket_chat::schema::rooms_users::room_name.eq(room.room),
+                user.eq(room.user),
+            ))
+            .execute(connection);
+        if result == Ok(1) && result2 == Ok(1) {
             format!("GRANTED")
         } else {
             println!("NON INSERITO");
@@ -164,18 +182,25 @@ fn login(form: Form<User>) -> String {
 #[post("/signup", data = "<form>")]
 fn signup(form: Form<User>) -> String {
     use diesel::insert_into;
+    use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
-    let user = form.into_inner();
+    let userr = form.into_inner();
     let connection = &mut rocket_chat::establish_connection();
 
     let result = insert_into(users)
         .values((
-            username.eq(user.username),
-            passwd.eq(hash_password(user.password)),
+            username.eq(userr.username.clone()),
+            passwd.eq(hash_password(userr.password)),
         ))
         .execute(connection);
-    if result == Ok(1) {
+    let result2 = insert_into(rooms_users)
+        .values((
+            rocket_chat::schema::rooms_users::room_name.eq("lobby"),
+            user.eq(userr.username),
+        ))
+        .execute(connection);
+    if result == Ok(1) && result2 == Ok(1) {
         format!("GRANTED")
     } else {
         format!("REJECTED")
