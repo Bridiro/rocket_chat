@@ -48,15 +48,13 @@ struct Room {
 struct PubRoom {
     room: String,
     require_password: bool,
-    hidden: bool,
 }
 
 impl PubRoom {
-    fn new(room: String, require_password: bool, hidden: bool) -> PubRoom {
+    fn new(room: String, require_password: bool) -> PubRoom {
         PubRoom {
             room: room,
             require_password: require_password,
-            hidden: hidden,
         }
     }
 }
@@ -75,42 +73,51 @@ fn add_room(form: Form<Room>) -> String {
 
     let room = form.into_inner();
 
-    if let Ok(roomsdb) = rooms.select(RoomDB::as_select()).load(connection) {
+    if let Ok(roomsdb) = rooms
+        .filter(rocket_chat::schema::rooms::room_name.eq(&room.room))
+        .select(RoomDB::as_select())
+        .load(connection)
+    {
         for r in roomsdb {
-            if r.room_name == room.room {
-                if (room.require_password
-                    && r.passwd == Some(hash_password(room.password.unwrap())))
-                    || !room.require_password
-                {
-                    let result = insert_into(rooms_users)
-                        .values((
-                            rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                            user.eq(room.user),
-                        ))
-                        .execute(connection);
-                    if result == Ok(1) {
-                        return format!("GRANTED");
-                    } else {
-                        return format!("REJECTED");
-                    }
+            if (room.require_password && r.passwd == Some(hash_password(room.password.unwrap())))
+                || !room.require_password
+            {
+                let result = insert_into(rooms_users)
+                    .values((
+                        rocket_chat::schema::rooms_users::room_name.eq(room.room),
+                        rocket_chat::schema::rooms_users::user.eq(room.user),
+                    ))
+                    .execute(connection);
+                if result == Ok(1) {
+                    return format!("GRANTED");
                 } else {
                     return format!("REJECTED");
                 }
+            } else {
+                return format!("REJECTED");
             }
         }
 
+        println!("Passw stanza: {:?}", &room.password);
+
         let result = insert_into(rooms)
             .values((
-                rocket_chat::schema::rooms::room_name.eq(room.room.clone()),
-                rocket_chat::schema::rooms::passwd.eq(hash_password(room.password.unwrap())),
-                require_password.eq(room.require_password),
-                hidden_room.eq(room.hidden),
+                rocket_chat::schema::rooms::room_name.eq(&room.room),
+                rocket_chat::schema::rooms::passwd.eq(
+                    if room.password != Some("null".to_string()) {
+                        Some(hash_password(room.password.unwrap()))
+                    } else {
+                        None
+                    },
+                ),
+                rocket_chat::schema::rooms::require_password.eq(room.require_password),
+                rocket_chat::schema::rooms::hidden_room.eq(room.hidden),
             ))
             .execute(connection);
         let result2 = insert_into(rooms_users)
             .values((
                 rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                user.eq(room.user),
+                rocket_chat::schema::rooms_users::user.eq(room.user),
             ))
             .execute(connection);
         if result == Ok(1) && result2 == Ok(1) {
@@ -129,21 +136,20 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
     use rocket_chat::schema::rooms::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
-    if let Ok(roomsdb) = rooms.select(RoomDB::as_select()).load(connection) {
+    if let Ok(roomsdb) = rooms
+        .filter(hidden_room.eq(false))
+        .select(RoomDB::as_select())
+        .load(connection)
+    {
         let pub_rooms = roomsdb
             .iter()
-            .map(|room| {
-                PubRoom::new(
-                    room.room_name.clone(),
-                    room.require_password,
-                    room.hidden_room,
-                )
-            })
+            .map(|room| PubRoom::new(room.room_name.clone(), room.require_password))
             .collect::<Vec<PubRoom>>();
 
+        println!("pub rooms: {:?}", &pub_rooms);
         Json(pub_rooms)
     } else {
-        let default: Vec<PubRoom> = vec![PubRoom::new("lobby".to_string(), false, false)];
+        let default: Vec<PubRoom> = vec![PubRoom::new("lobby".to_string(), false)];
         Json(default)
     }
 }
