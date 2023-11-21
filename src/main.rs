@@ -130,15 +130,6 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
     let connection = &mut rocket_chat::establish_connection();
 
     if let Ok(roomsdb) = rooms.select(RoomDB::as_select()).load(connection) {
-        println!("Displaying {} rooms", roomsdb.len());
-        for room in &roomsdb {
-            println!("{}", room.room_name);
-            println!("{:?}", room.passwd);
-            println!("{}", room.require_password);
-            println!("{}", room.hidden_room);
-            println!("-------------------------------");
-        }
-
         let pub_rooms = roomsdb
             .iter()
             .map(|room| {
