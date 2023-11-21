@@ -313,7 +313,7 @@ function init() {
             ? document.getElementById("new-room-password").value
             : "";
         const hidden = false;
-        const user = STATUS.user;
+        const user = STATE.user;
         if (room != "" && require_password == true && password === "") return;
 
         document.getElementById("new-room-name").value = "";
