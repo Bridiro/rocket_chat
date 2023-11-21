@@ -5,8 +5,6 @@ var STATE = {
     connected: false,
 };
 
-var AVAILABLE_ROOMS = {};
-
 // Generate a color from a "hash" of a string. Thanks, internet.
 function hashColor(str) {
     let hash = 0;
@@ -280,23 +278,20 @@ function init() {
         .addEventListener("click", (e) => {
             e.preventDefault();
 
-            let roomDataList = document.getElementById("existing-rooms");
+            let roomDataList = document.getElementById("rooms-list");
             if (STATE.connected) {
                 fetch("/search-rooms", {
                     method: "POST",
                 })
                     .then((response) => response.text())
                     .then((data) => {
-                        AVAILABLE_ROOMS = JSON.parse(data);
-                        console.log(AVAILABLE_ROOMS);
+                        available_rooms = JSON.parse(data);
+                        console.log(available_rooms);
                         roomDataList.innerHTML = "";
-                        var options = "";
-                        AVAILABLE_ROOMS.forEach((room) => {
-                            options += !room.hidden
-                                ? '<option value="' + room.room + '" >'
-                                : "";
+                        available_rooms.forEach((room) => {
+                            roomDataList.innerHTML +=
+                                '<option value="' + room.room + '" >';
                         });
-                        roomDataList.innerHTML = options;
                     });
             }
 
@@ -311,10 +306,10 @@ function init() {
         const room = document.getElementById("new-room-name").value;
         const password = require_password
             ? document.getElementById("new-room-password").value
-            : "";
+            : null;
         const hidden = false;
         const user = STATE.user;
-        if (room != "" && require_password == true && password === "") return;
+        if (room != "" && require_password && password === "") return;
 
         document.getElementById("new-room-name").value = "";
 
@@ -346,7 +341,6 @@ function init() {
     // Set up the close popup handler
     document.getElementById("add-cancel").addEventListener("click", (e) => {
         e.preventDefault();
-        AVAILABLE_ROOMS = {};
         cleanPopup();
         closePopup();
     });
@@ -360,9 +354,13 @@ function init() {
         var checkPassword = document.getElementById("check-password");
         let roomName = document.getElementById("new-room-name").value;
         let exists = null;
-        AVAILABLE_ROOMS.forEach((roomLoop) => {
-            if (roomName == roomLoop.room) {
-                exists = roomLoop;
+
+        let options = document
+            .getElementById("rooms-list")
+            .querySelectorAll("option");
+        options.forEach((option) => {
+            if (roomName == option.value) {
+                exists = option.value;
             }
         });
 
