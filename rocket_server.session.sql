@@ -1,3 +1,2 @@
-DELETE FROM rooms
-WHERE
-    room_name = "ciao";
+SELECT * FROM rooms_users 
+INNER JOIN rooms ON rooms_users.room_name = rooms.room_name;
