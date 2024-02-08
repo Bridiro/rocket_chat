@@ -50,17 +50,45 @@ function removeRoom(name) {
         return false;
     }
 
-    let rooms = roomListDiv.querySelectorAll(".room");
-    if (rooms[0].innerHTML == name && STATE.room == name && rooms.length > 1)
-        changeRoom(rooms[1].innerHTML);
-    else if (STATE.room == name) changeRoom(rooms[0].innerHTML);
+    const room = name;
+    const password = "";
+    const require_password = false;
+    const hidden = "";
+    const user = STATE.user;
+    if (STATE.connected) {
+        fetch("/remove-room", {
+            method: "POST",
+            body: new URLSearchParams({
+                room,
+                password,
+                require_password,
+                hidden,
+                user,
+            }),
+        })
+            .then((response) => response.text())
+            .then((data) => {
+                console.log(data);
+                if (data === "GRANTED") {
+                    let rooms = roomListDiv.querySelectorAll(".room");
+                    if (
+                        rooms[0].innerHTML == name &&
+                        STATE.room == name &&
+                        rooms.length > 1
+                    )
+                        changeRoom(rooms[1].innerHTML);
+                    else if (STATE.room == name) changeRoom(rooms[0].innerHTML);
 
-    var node = roomListDiv.querySelector(
-        `.room[data-name='${name}']`
-    ).parentElement;
-    roomListDiv.removeChild(node);
-    delete STATE.rooms[name];
-    return true;
+                    var node = roomListDiv.querySelector(
+                        `.room[data-name='${name}']`
+                    ).parentElement;
+                    roomListDiv.removeChild(node);
+                    delete STATE.rooms[name];
+                    return true;
+                }
+                return;
+            });
+    }
 }
 
 // Change the current room to `name`, restoring its messages.
@@ -190,7 +218,40 @@ function closeLogin() {
     document.getElementById("login").style.display = "none";
 }
 
-// Let's go! Initialize the world.
+function encrypt_with_rsa_pub(toEncrypt, publicKey) {
+    var buffer = Buffer.from(toEncrypt, "utf8");
+    var encrypted = crypto.publicEncrypt(publicKey, buffer);
+    return encrypted.toString("base64");
+}
+
+function prova_encoding() {
+    if (STATE.connected) {
+        fetch("/encoding", {
+            method: "POST",
+            body: new URLSearchParams({
+                x,
+            }),
+        })
+            .then((response) => response.text())
+            .then((data) => {
+                console.log("Dal server: " + data);
+            });
+    }
+    const encrypted = encrypt_with_rsa_pub("Marione");
+    if (STATE.connected) {
+        fetch("/encoding", {
+            method: "POST",
+            body: new URLSearchParams({
+                x,
+            }),
+        })
+            .then((response) => response.text())
+            .then((data) => {
+                console.log("Dal server: " + data);
+            });
+    }
+}
+
 function init() {
     addRoom("lobby");
 
@@ -211,8 +272,12 @@ function init() {
             })
                 .then((response) => response.text())
                 .then((data) => {
-                    console.log(data);
-                    if (data === "GRANTED") {
+                    const parsed = JSON.parse(data);
+                    console.log(parsed);
+                    if (parsed.length > 0) {
+                        parsed.forEach((room) => {
+                            addRoom(room.room);
+                        });
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
                         return;
@@ -238,7 +303,6 @@ function init() {
             })
                 .then((response) => response.text())
                 .then((data) => {
-                    console.log(data);
                     if (data === "GRANTED") {
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
