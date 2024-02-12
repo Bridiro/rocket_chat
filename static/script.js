@@ -18,7 +18,7 @@ function hashColor(str) {
 
 // Add a new room `name` and change to it. Returns `true` if the room didn't
 // already exist and `false` otherwise.
-function addRoom(name) {
+function addRoom(name, key) {
     if (STATE.rooms[name]) {
         changeRoom(name);
         return false;
@@ -34,7 +34,7 @@ function addRoom(name) {
     room.dataset.name = name;
     roomListDiv.appendChild(node);
 
-    STATE.rooms[name] = [];
+    STATE.rooms[name] = { key: key, messages: [] };
     changeRoom(name);
     return true;
 }
@@ -55,6 +55,7 @@ function removeRoom(name) {
     const require_password = false;
     const hidden = "";
     const user = STATE.user;
+    const rsa_client_key = "";
     if (STATE.connected) {
         fetch("/remove-room", {
             method: "POST",
@@ -64,6 +65,7 @@ function removeRoom(name) {
                 require_password,
                 hidden,
                 user,
+                rsa_client_key,
             }),
         })
             .then((response) => response.text())
@@ -126,7 +128,7 @@ function changeRoom(name) {
         messagesDiv.removeChild(msg);
     });
 
-    STATE.rooms[name].forEach((data) =>
+    STATE.rooms[name].messages.forEach((data) =>
         addMessage(name, data.username, data.message)
     );
 }
@@ -135,7 +137,7 @@ function changeRoom(name) {
 // message. If the current room is `room`, render the message.
 function addMessage(room, username, message, push = false) {
     if (push) {
-        STATE.rooms[room].push({ username, message });
+        STATE.rooms[room].messages.push({ username, message });
     }
 
     if (STATE.room == room) {
@@ -161,12 +163,19 @@ function subscribe(uri) {
             const msg = JSON.parse(ev.data);
             if (!"message" in msg || !"room" in msg || !"username" in msg)
                 return;
-            addMessage(msg.room, msg.username, msg.message, true);
+            if (STATE.rooms[msg.room])
+                addMessage(
+                    msg.room,
+                    msg.username,
+                    decryptAes(msg.message, STATE.rooms[msg.room].key),
+                    true
+                );
         });
 
         events.addEventListener("open", () => {
             setConnectedStatus(true);
             console.log(`connected to event stream at ${uri}`);
+            getPubKey();
             retryTime = 1;
         });
 
@@ -218,56 +227,77 @@ function closeLogin() {
     document.getElementById("login").style.display = "none";
 }
 
-function encrypt_with_rsa_pub(toEncrypt, publicKey) {
-    var buffer = Buffer.from(toEncrypt, "utf8");
-    var encrypted = crypto.publicEncrypt(publicKey, buffer);
-    return encrypted.toString("base64");
+function encryptAes(message, key) {
+    var b64 = CryptoJS.AES.encrypt(message, key).toString();
+    var e64 = CryptoJS.enc.Base64.parse(b64);
+    var eHex = e64.toString(CryptoJS.enc.Hex);
+    return eHex;
 }
 
-function prova_encoding() {
-    if (STATE.connected) {
-        fetch("/encoding", {
-            method: "POST",
-            body: new URLSearchParams({
-                x,
-            }),
-        })
-            .then((response) => response.text())
-            .then((data) => {
-                console.log("Dal server: " + data);
-            });
+function decryptAes(cipherText, key) {
+    var reb64 = CryptoJS.enc.Hex.parse(cipherText);
+    var bytes = reb64.toString(CryptoJS.enc.Base64);
+    var decrypt = CryptoJS.AES.decrypt(bytes, key);
+    var plain = decrypt.toString(CryptoJS.enc.Utf8);
+    return plain;
+}
+
+function encryptRsa(message) {
+    try {
+        return forge.util.encode64(
+            forge.pki
+                .publicKeyFromPem(STATE.serverPubKey)
+                .encrypt(forge.util.encodeUtf8(message))
+        );
+    } catch (error) {
+        console.log("Errore durante la crittografia: ", error);
     }
-    const encrypted = encrypt_with_rsa_pub("Marione");
+}
+
+function decryptRsa(encrypted) {
+    const encryptedMessageBytes = forge.util.decode64(encrypted);
+    const decryptedMessageBytes = STATE.clientKeys.privateKey.decrypt(
+        encryptedMessageBytes
+    );
+    return forge.util.decodeUtf8(decryptedMessageBytes);
+}
+
+function getPubKey() {
     if (STATE.connected) {
-        fetch("/encoding", {
-            method: "POST",
-            body: new URLSearchParams({
-                x,
-            }),
+        fetch("/rsa-pub-key", {
+            method: "GET",
         })
             .then((response) => response.text())
             .then((data) => {
-                console.log("Dal server: " + data);
+                STATE.serverPubKey = data;
             });
     }
 }
 
 function init() {
-    addRoom("lobby");
+    // Generate RSA keys for the client
+    STATE.clientKeys = forge.pki.rsa.generateKeyPair({ bits: 2048 });
 
     // Set up handler for the login form
     document.getElementById("login-form").addEventListener("submit", (e) => {
         e.preventDefault();
 
-        const username = document.getElementById("login-username").value;
-        const password = document.getElementById("login-password").value;
-
         if (STATE.connected) {
+            getPubKey();
+            const username = document.getElementById("login-username").value;
+            const password = encryptRsa(
+                document.getElementById("login-password").value
+            );
+            const rsa_key = forge.pki.publicKeyToPem(
+                STATE.clientKeys.publicKey
+            );
+
             fetch("/login", {
                 method: "POST",
                 body: new URLSearchParams({
                     username,
                     password,
+                    rsa_key,
                 }),
             })
                 .then((response) => response.text())
@@ -276,7 +306,7 @@ function init() {
                     console.log(parsed);
                     if (parsed.length > 0) {
                         parsed.forEach((room) => {
-                            addRoom(room.room);
+                            addRoom(room.room, decryptRsa(room.key));
                         });
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
@@ -290,19 +320,27 @@ function init() {
     document.getElementById("sign-up-button").addEventListener("click", (e) => {
         e.preventDefault();
 
-        const username = document.getElementById("login-username").value;
-        const password = document.getElementById("login-password").value;
-
         if (STATE.connected) {
+            getPubKey();
+            const username = document.getElementById("login-username").value;
+            const password = encryptRsa(
+                document.getElementById("login-password").value
+            );
+            const rsa_key = forge.pki.publicKeyToPem(
+                STATE.clientKeys.publicKey
+            );
+
             fetch("/signup", {
                 method: "POST",
                 body: new URLSearchParams({
                     username,
                     password,
+                    rsa_key,
                 }),
             })
                 .then((response) => response.text())
                 .then((data) => {
+                    console.log(data);
                     if (data === "GRANTED") {
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
@@ -321,9 +359,11 @@ function init() {
         let messageField = newMessageForm.querySelector("#message");
 
         const room = STATE.room;
-        const message = messageField.value;
+        const message = encryptAes(
+            messageField.value,
+            STATE.rooms[STATE.room].key
+        );
         const username = STATE.user;
-        console.log(room, message, username);
         if (!message || !username) return;
 
         if (STATE.connected) {
@@ -365,19 +405,24 @@ function init() {
     // Set up the add room handler
     document.getElementById("add-room").addEventListener("submit", (e) => {
         e.preventDefault();
-        const require_password =
-            document.getElementById("check-password").checked;
-        const room = document.getElementById("new-room-name").value;
-        const password = require_password
-            ? document.getElementById("new-room-password").value
-            : null;
-        const hidden = false;
-        const user = STATE.user;
-        if (room != "" && require_password && password === "") return;
-
-        document.getElementById("new-room-name").value = "";
 
         if (STATE.connected) {
+            getPubKey();
+            const require_password =
+                document.getElementById("check-password").checked;
+            const room = document.getElementById("new-room-name").value;
+            const password = require_password
+                ? encryptRsa(document.getElementById("new-room-password").value)
+                : null;
+            const hidden = false;
+            const user = STATE.user;
+            const rsa_client_key = forge.pki.publicKeyToPem(
+                STATE.clientKeys.publicKey
+            );
+            if (room != "" && require_password && password === "") return;
+
+            document.getElementById("new-room-name").value = "";
+
             fetch("/add-room", {
                 method: "POST",
                 body: new URLSearchParams({
@@ -386,15 +431,16 @@ function init() {
                     require_password,
                     hidden,
                     user,
+                    rsa_client_key,
                 }),
             })
                 .then((response) => response.text())
                 .then((data) => {
                     console.log(data);
-                    if (data == "GRANTED") {
+                    if (data != "REJECTED") {
                         cleanPopup();
                         closePopup();
-                        if (!addRoom(room)) return;
+                        if (!addRoom(room, decryptRsa(data))) return;
                     }
                     cleanPopup();
                     return;

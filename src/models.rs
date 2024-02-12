@@ -25,6 +25,7 @@ pub struct RoomDB {
     pub passwd: Option<String>,
     pub require_password: bool,
     pub hidden_room: bool,
+    pub aes_key: String,
 }
 
 #[derive(Identifiable, Selectable, Queryable, Associations, Debug)]
