@@ -19,6 +19,7 @@ diesel::table! {
         passwd -> Nullable<Text>,
         require_password -> Bool,
         hidden_room -> Bool,
+        aes_key -> Text,
     }
 }
 

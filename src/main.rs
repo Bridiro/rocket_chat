@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate rocket;
 
+use base64::prelude::*;
 use diesel::prelude::*;
+use rand::Rng;
 use rocket::{
     form::Form,
     fs::{relative, FileServer},
@@ -13,10 +15,12 @@ use rocket::{
 };
 use rocket_chat::models::*;
 use rsa::{
-    pkcs1::EncodeRsaPublicKey, pkcs8::LineEnding, Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
+    pkcs1::EncodeRsaPublicKey,
+    pkcs8::{DecodePublicKey, LineEnding},
+    Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
 };
 use sha2::{Digest, Sha512};
-use std::sync::Mutex;
+use std::{error::Error, sync::Mutex};
 
 struct KeyPair {
     pub pub_key: RsaPublicKey,
@@ -42,6 +46,7 @@ struct User {
     #[field(validate = len(..20))]
     username: String,
     password: String,
+    rsa_key: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
@@ -62,6 +67,7 @@ struct Room {
     require_password: bool,
     hidden: bool,
     user: String,
+    rsa_client_key: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -69,13 +75,15 @@ struct Room {
 struct PubRoom {
     room: String,
     require_password: bool,
+    key: String,
 }
 
 impl PubRoom {
-    fn new(room: String, require_password: bool) -> PubRoom {
+    fn new(room: String, require_password: bool, key: String) -> PubRoom {
         PubRoom {
             room: room,
             require_password: require_password,
+            key: key,
         }
     }
 }
@@ -86,7 +94,7 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
 }
 
 #[post("/add-room", data = "<form>")]
-fn add_room(form: Form<Room>) -> String {
+fn add_room(form: Form<Room>, state: &State<AppState>) -> String {
     use rocket_chat::schema::rooms::dsl::*;
     use rocket_chat::schema::rooms_users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
@@ -98,9 +106,11 @@ fn add_room(form: Form<Room>) -> String {
         .select(RoomDB::as_select())
         .load(connection)
     {
+        // Stanza già esistente
         for r in roomsdb {
-            if (room.require_password && r.passwd == Some(hash_password(room.password.unwrap())))
-                || !room.require_password
+            if (room.require_password
+                && r.passwd == Some(hash_password(decrypt_rsa(room.password.unwrap(), state))))
+                || !r.require_password
             {
                 let result = diesel::insert_into(rooms_users)
                     .values((
@@ -109,7 +119,10 @@ fn add_room(form: Form<Room>) -> String {
                     ))
                     .execute(connection);
                 if result == Ok(1) {
-                    return format!("GRANTED");
+                    match encrypt_rsa(r.aes_key, room.rsa_client_key) {
+                        Ok(enc) => return enc,
+                        Err(e) => return e.to_string(),
+                    }
                 } else {
                     return format!("REJECTED");
                 }
@@ -118,18 +131,21 @@ fn add_room(form: Form<Room>) -> String {
             }
         }
 
+        // Stanza da creare
+        let key = generate_aes256_key();
         let result = diesel::insert_into(rooms)
             .values((
                 rocket_chat::schema::rooms::room_name.eq(&room.room),
                 rocket_chat::schema::rooms::passwd.eq(
                     if room.password != Some("null".to_string()) {
-                        Some(hash_password(room.password.unwrap()))
+                        Some(hash_password(decrypt_rsa(room.password.unwrap(), state)))
                     } else {
                         None
                     },
                 ),
                 rocket_chat::schema::rooms::require_password.eq(room.require_password),
                 rocket_chat::schema::rooms::hidden_room.eq(room.hidden),
+                rocket_chat::schema::rooms::aes_key.eq(&key),
             ))
             .execute(connection);
         let result2 = diesel::insert_into(rooms_users)
@@ -139,7 +155,10 @@ fn add_room(form: Form<Room>) -> String {
             ))
             .execute(connection);
         if result == Ok(1) && result2 == Ok(1) {
-            format!("GRANTED")
+            match encrypt_rsa(key, room.rsa_client_key) {
+                Ok(enc) => enc,
+                Err(_) => format!("REJECTED"),
+            }
         } else {
             format!("REJECTED")
         }
@@ -203,20 +222,27 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
     {
         let pub_rooms = roomsdb
             .iter()
-            .map(|room| PubRoom::new(room.room_name.clone(), room.require_password))
+            .map(|room| {
+                PubRoom::new(
+                    room.room_name.clone(),
+                    room.require_password,
+                    "".to_string(),
+                )
+            })
             .collect::<Vec<PubRoom>>();
 
         Json(pub_rooms)
     } else {
-        let default: Vec<PubRoom> = vec![PubRoom::new("lobby".to_string(), false)];
+        let default: Vec<PubRoom> = Vec::new();
         Json(default)
     }
 }
 
 #[post("/login", data = "<form>")]
-fn login(form: Form<User>) -> Json<Vec<PubRoom>> {
+fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
     let userform = form.into_inner();
-    use rocket_chat::schema::rooms_users::dsl::*;
+    let passw = decrypt_rsa(userform.password, state);
+    let rsa_key = userform.rsa_key;
     use rocket_chat::schema::users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
@@ -226,16 +252,21 @@ fn login(form: Form<User>) -> Json<Vec<PubRoom>> {
         .select(passwd)
         .load::<String>(connection)
     {
-        if result.len() > 0 && hash_password(userform.password) == result[0] {
-            if let Ok(rooms_users_db) = rooms_users
+        if result.len() > 0 && hash_password(passw) == result[0] {
+            if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
+                .inner_join(rocket_chat::schema::rooms_users::table)
                 .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
-                .select(RoomUserDB::as_select())
-                .load(connection)
+                .select((RoomDB::as_select(), RoomUserDB::as_select()))
+                .load::<(RoomDB, RoomUserDB)>(connection)
             {
-                let pub_rooms = rooms_users_db
-                    .iter()
-                    .map(|room_user| PubRoom::new(room_user.room_name.clone(), false))
-                    .collect::<Vec<PubRoom>>();
+                let mut pub_rooms: Vec<PubRoom> = Vec::new();
+                for (room, room_user) in room_with_roomuser {
+                    pub_rooms.push(PubRoom::new(
+                        room_user.room_name,
+                        false,
+                        encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
+                    ))
+                }
 
                 Json(pub_rooms)
             } else {
@@ -253,18 +284,19 @@ fn login(form: Form<User>) -> Json<Vec<PubRoom>> {
 }
 
 #[post("/signup", data = "<form>")]
-fn signup(form: Form<User>) -> String {
+fn signup(form: Form<User>, state: &State<AppState>) -> String {
     use diesel::insert_into;
     use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
     let userr = form.into_inner();
+    let passw = decrypt_rsa(userr.password, state);
     let connection = &mut rocket_chat::establish_connection();
 
     let result = insert_into(users)
         .values((
             username.eq(userr.username.clone()),
-            passwd.eq(userr.password),
+            passwd.eq(hash_password(passw)),
         ))
         .execute(connection);
     let result2 = insert_into(rooms_users)
@@ -278,19 +310,6 @@ fn signup(form: Form<User>) -> String {
     } else {
         format!("REJECTED")
     }
-}
-
-#[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
-#[serde(crate = "rocket::serde")]
-struct Encoding {
-    x: String,
-}
-
-#[post("/encoding", data = "<form>")]
-fn encoding(form: Form<Encoding>) -> String {
-    let val = form.into_inner();
-    println!("{}", &val.x);
-    val.x
 }
 
 #[get("/events")]
@@ -319,6 +338,40 @@ fn hash_password(password: String) -> String {
     hasher.update(password);
     let result = hasher.finalize();
     String::from_utf8_lossy(&result).to_string()
+}
+
+// Decode a base64 encoded string with RSA
+fn decrypt_rsa(encoded: String, state: &State<AppState>) -> String {
+    let enc_data = BASE64_STANDARD.decode(encoded).unwrap();
+
+    match get_rsa_priv_key_from_state(state).decrypt(Pkcs1v15Encrypt, &enc_data) {
+        Ok(dec_data) => {
+            if let Ok(dec_str) = String::from_utf8(dec_data) {
+                dec_str
+            } else {
+                String::from("ERROR DECODING")
+            }
+        }
+        Err(err) => {
+            format!("ERROR DECRYPTING: {}", err)
+        }
+    }
+}
+
+// Encrypt a message to a base64 string with RSA
+fn encrypt_rsa(message: String, public_key_pem: String) -> Result<String, Box<dyn Error>> {
+    let public_key = RsaPublicKey::from_public_key_pem(&public_key_pem)
+        .map_err(|e| format!("Errore durante la lettura della chiave pubblica PEM: {}", e))?;
+
+    let message_bytes = message.as_bytes();
+
+    let mut rng = rand::thread_rng();
+    let encrypted_message = public_key
+        .encrypt(&mut rng, Pkcs1v15Encrypt, message_bytes)
+        .map_err(|e| format!("Errore durante la crittografia del messaggio: {}", e))?;
+
+    let encrypted_message_base64 = BASE64_STANDARD.encode(encrypted_message);
+    Ok(encrypted_message_base64)
 }
 
 fn generate_key_pair() -> KeyPair {
@@ -350,20 +403,12 @@ fn get_rsa_pub_key(state: &State<AppState>) -> String {
         .unwrap()
 }
 
-#[get("/rsa")]
-fn rsa_prova(state: &State<AppState>) -> String {
-    let mut rng = rand::thread_rng();
-
-    let data = b"hello world";
-    let enc_data = get_rsa_pub_key_from_state(state)
-        .encrypt(&mut rng, Pkcs1v15Encrypt, &data[..])
-        .expect("failed to encrypt");
-    assert_ne!(&data[..], &enc_data[..]);
-
-    let dec_data = get_rsa_priv_key_from_state(state)
-        .decrypt(Pkcs1v15Encrypt, &enc_data)
-        .expect("failed to decrypt");
-    String::from_utf8(dec_data).unwrap()
+fn generate_aes256_key() -> String {
+    let mut key = [0u8; 32];
+    match rand::thread_rng().try_fill(&mut key) {
+        Ok(_) => BASE64_STANDARD.encode(key),
+        Err(e) => format!("Errore nel generare la chiave: {}", e),
+    }
 }
 
 #[launch]
@@ -382,9 +427,7 @@ fn rocket() -> _ {
                 search_rooms,
                 login,
                 signup,
-                encoding,
                 get_rsa_pub_key,
-                rsa_prova,
                 events
             ],
         )
