@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use chrono::NaiveDateTime;
 
 use diesel::prelude::*;
 
@@ -14,7 +14,7 @@ pub struct MessageDB {
     pub room_name: String,
     pub username: String,
     pub content: String,
-    pub message_time: Option<SystemTime>,
+    pub message_time: Option<NaiveDateTime>,
 }
 
 #[derive(Queryable, Selectable, Identifiable, Debug, PartialEq)]
