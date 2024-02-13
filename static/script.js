@@ -307,9 +307,21 @@ function init() {
                     if (parsed.length > 0) {
                         parsed.forEach((room) => {
                             addRoom(room.room, decryptRsa(room.key));
+                            room.messages.forEach((message) => {
+                                addMessage(
+                                    message.room,
+                                    message.username,
+                                    decryptAes(
+                                        message.message,
+                                        STATE.rooms[message.room].key
+                                    ),
+                                    true
+                                );
+                            });
                         });
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
+                        document.title += " | " + username;
                         return;
                     }
                     return;
@@ -344,6 +356,7 @@ function init() {
                     if (data === "GRANTED") {
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
+                        document.title += " | " + username;
                         return;
                     }
                     return;
@@ -394,7 +407,11 @@ function init() {
                         roomDataList.innerHTML = "";
                         available_rooms.forEach((room) => {
                             roomDataList.innerHTML +=
-                                '<option value="' + room.room + '" >';
+                                '<option value="' +
+                                room.room +
+                                '" data-rp="' +
+                                room.require_password +
+                                '" >';
                         });
                     });
             }
@@ -463,33 +480,33 @@ function init() {
         var newRoomPassword = document.getElementById("new-room-password");
         var checkPassword = document.getElementById("check-password");
         let roomName = document.getElementById("new-room-name").value;
-        let exists = null;
 
         let options = document
             .getElementById("rooms-list")
             .querySelectorAll("option");
-        options.forEach((option) => {
-            if (roomName == option.value) {
-                exists = option.value;
-            }
-        });
-
-        if (exists) {
-            addRoomButton.innerHTML = "Join";
-            if (exists.require_password) {
-                newRoomPassword.disabled = false;
-                checkPassword.checked = true;
-                checkPassword.disabled = true;
+        for (var i = 0; i < options.length; i++) {
+            console.log(options[i].dataset.rp);
+            if (roomName == options[i].value) {
+                addRoomButton.innerHTML = "Join";
+                if (options[i].dataset.rp == "true") {
+                    console.log("passw obbligatoria");
+                    newRoomPassword.disabled = false;
+                    checkPassword.checked = true;
+                    checkPassword.disabled = true;
+                } else {
+                    console.log("no passw");
+                    newRoomPassword.disabled = true;
+                    checkPassword.disabled = true;
+                    checkPassword.checked = false;
+                }
+                break;
             } else {
+                console.log("no stanza");
+                addRoomButton.innerHTML = "Add";
                 newRoomPassword.disabled = true;
-                checkPassword.disabled = true;
+                checkPassword.disabled = false;
                 checkPassword.checked = false;
             }
-        } else {
-            addRoomButton.innerHTML = "Add";
-            newRoomPassword.disabled = true;
-            checkPassword.disabled = false;
-            checkPassword.checked = false;
         }
     });
 

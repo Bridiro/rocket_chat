@@ -49,7 +49,7 @@ struct User {
     rsa_key: String,
 }
 
-#[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct Message {
     #[field(validate = len(..30))]
@@ -57,6 +57,16 @@ struct Message {
     #[field(validate = len(..20))]
     username: String,
     message: String,
+}
+
+impl Message {
+    fn new(room: String, username: String, message: String) -> Message {
+        Message {
+            room: room,
+            username: username,
+            message: message,
+        }
+    }
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -76,21 +86,39 @@ struct PubRoom {
     room: String,
     require_password: bool,
     key: String,
+    messages: Vec<Message>,
 }
 
 impl PubRoom {
-    fn new(room: String, require_password: bool, key: String) -> PubRoom {
+    fn new(room: String, require_password: bool, key: String, messages: Vec<Message>) -> PubRoom {
         PubRoom {
             room: room,
             require_password: require_password,
             key: key,
+            messages: messages,
         }
     }
 }
 
 #[post("/message", data = "<form>")]
 fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
-    let _res = queue.send(form.into_inner());
+    use diesel::insert_into;
+
+    let connection = &mut rocket_chat::establish_connection();
+    let message = form.into_inner();
+
+    if let Ok(_) = insert_into(rocket_chat::schema::messages::dsl::messages)
+        .values((
+            rocket_chat::schema::messages::room_name.eq(&message.room),
+            rocket_chat::schema::messages::username.eq(&message.username),
+            rocket_chat::schema::messages::content.eq(&message.message),
+        ))
+        .execute(connection)
+    {
+        let _res = queue.send(message);
+    } else {
+        println!("error inserting message");
+    }
 }
 
 #[post("/add-room", data = "<form>")]
@@ -227,6 +255,7 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
                     room.room_name.clone(),
                     room.require_password,
                     "".to_string(),
+                    Vec::<Message>::new(),
                 )
             })
             .collect::<Vec<PubRoom>>();
@@ -240,10 +269,11 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
 
 #[post("/login", data = "<form>")]
 fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
+    use rocket_chat::schema::users::dsl::*;
+
     let userform = form.into_inner();
     let passw = decrypt_rsa(userform.password, state);
     let rsa_key = userform.rsa_key;
-    use rocket_chat::schema::users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
     if let Ok(result) = users
@@ -261,11 +291,26 @@ fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
             {
                 let mut pub_rooms: Vec<PubRoom> = Vec::new();
                 for (room, room_user) in room_with_roomuser {
-                    pub_rooms.push(PubRoom::new(
-                        room_user.room_name,
-                        false,
-                        encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
-                    ))
+                    if let Ok(messages_for_room) = MessageDB::belonging_to(&room)
+                        .select(MessageDB::as_select())
+                        .load(connection)
+                    {
+                        pub_rooms.push(PubRoom::new(
+                            room_user.room_name,
+                            false,
+                            encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
+                            messages_for_room
+                                .iter()
+                                .map(|mdb| {
+                                    Message::new(
+                                        mdb.room_name.clone(),
+                                        mdb.username.clone(),
+                                        mdb.content.clone(),
+                                    )
+                                })
+                                .collect::<Vec<Message>>(),
+                        ))
+                    }
                 }
 
                 Json(pub_rooms)
