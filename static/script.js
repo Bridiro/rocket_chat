@@ -68,7 +68,15 @@ function removeRoom(name) {
                 rsa_client_key,
             }),
         })
-            .then((response) => response.text())
+            .then((response) => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    return response.text().then((text) => {
+                        throw new Error(text);
+                    });
+                }
+            })
             .then((data) => {
                 console.log(data);
                 if (data === "GRANTED") {
@@ -89,6 +97,9 @@ function removeRoom(name) {
                     return true;
                 }
                 return;
+            })
+            .catch((err) => {
+                console.error(err);
             });
     }
 }
@@ -158,8 +169,6 @@ function subscribe(uri) {
         const events = new EventSource(uri);
 
         events.addEventListener("message", (ev) => {
-            console.log("raw data", JSON.stringify(ev.data));
-            console.log("decoded data", JSON.stringify(JSON.parse(ev.data)));
             const msg = JSON.parse(ev.data);
             if (!"message" in msg || !"room" in msg || !"username" in msg)
                 return;
@@ -350,16 +359,25 @@ function init() {
                     rsa_key,
                 }),
             })
-                .then((response) => response.text())
+                .then((response) => {
+                    if (response.ok) {
+                        return response.text();
+                    } else {
+                        return response.text().then((text) => {
+                            throw new Error(text);
+                        });
+                    }
+                })
                 .then((data) => {
                     console.log(data);
                     if (data === "GRANTED") {
                         document.getElementById("login").style.display = "none";
                         STATE.user = username;
                         document.title += " | " + username;
-                        return;
                     }
-                    return;
+                })
+                .catch((err) => {
+                    console.error(err);
                 });
         }
     });
@@ -383,9 +401,19 @@ function init() {
             fetch("/message", {
                 method: "POST",
                 body: new URLSearchParams({ room, username, message }),
-            }).then((response) => {
-                if (response.ok) messageField.value = "";
-            });
+            })
+                .then((response) => {
+                    if (response.ok) {
+                        messageField.value = "";
+                    } else {
+                        return response.text().then((text) => {
+                            throw new Error(text);
+                        });
+                    }
+                })
+                .catch((err) => {
+                    console.error(err);
+                });
         }
     });
 
@@ -400,7 +428,15 @@ function init() {
                 fetch("/search-rooms", {
                     method: "POST",
                 })
-                    .then((response) => response.text())
+                    .then((response) => {
+                        if (response.ok) {
+                            return response.text();
+                        } else {
+                            return response.text().then((text) => {
+                                throw new Error(text);
+                            });
+                        }
+                    })
                     .then((data) => {
                         available_rooms = JSON.parse(data);
                         console.log(available_rooms);
@@ -413,6 +449,9 @@ function init() {
                                 room.require_password +
                                 '" >';
                         });
+                    })
+                    .catch((err) => {
+                        console.error(err);
                     });
             }
 
@@ -489,19 +528,16 @@ function init() {
             if (roomName == options[i].value) {
                 addRoomButton.innerHTML = "Join";
                 if (options[i].dataset.rp == "true") {
-                    console.log("passw obbligatoria");
                     newRoomPassword.disabled = false;
                     checkPassword.checked = true;
                     checkPassword.disabled = true;
                 } else {
-                    console.log("no passw");
                     newRoomPassword.disabled = true;
                     checkPassword.disabled = true;
                     checkPassword.checked = false;
                 }
                 break;
             } else {
-                console.log("no stanza");
                 addRoomButton.innerHTML = "Add";
                 newRoomPassword.disabled = true;
                 checkPassword.disabled = false;

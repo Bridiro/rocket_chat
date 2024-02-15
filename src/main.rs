@@ -7,10 +7,16 @@ use rand::Rng;
 use rocket::{
     form::Form,
     fs::{relative, FileServer},
-    response::stream::{Event, EventStream},
+    http::Status,
+    response::{
+        status,
+        stream::{Event, EventStream},
+    },
     serde::{json::Json, Deserialize, Serialize},
-    tokio::select,
-    tokio::sync::broadcast::{channel, error::RecvError, Sender},
+    tokio::{
+        select,
+        sync::broadcast::{channel, error::RecvError, Sender},
+    },
     Shutdown, State,
 };
 use rocket_chat::models::*;
@@ -101,7 +107,10 @@ impl PubRoom {
 }
 
 #[post("/message", data = "<form>")]
-fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
+fn post(
+    form: Form<Message>,
+    queue: &State<Sender<Message>>,
+) -> Result<(), status::Custom<&'static str>> {
     use diesel::insert_into;
 
     let connection = &mut rocket_chat::establish_connection();
@@ -116,8 +125,12 @@ fn post(form: Form<Message>, queue: &State<Sender<Message>>) {
         .execute(connection)
     {
         let _res = queue.send(message);
+        Ok(())
     } else {
-        println!("error inserting message");
+        Err(status::Custom(
+            Status::InternalServerError,
+            "error inserting message",
+        ))
     }
 }
 
@@ -196,8 +209,7 @@ fn add_room(form: Form<Room>, state: &State<AppState>) -> String {
 }
 
 #[post("/remove-room", data = "<form>")]
-fn remove_room(form: Form<Room>) -> String {
-    use rocket_chat::schema::rooms_users::dsl::*;
+fn remove_room(form: Form<Room>) -> Result<&'static str, status::Custom<&'static str>> {
     let connection = &mut rocket_chat::establish_connection();
 
     let room = form.clone().room;
@@ -205,21 +217,19 @@ fn remove_room(form: Form<Room>) -> String {
 
     let deleted_room_user = diesel::delete(
         rocket_chat::schema::rooms_users::table
-            .filter(room_name.eq(&room))
-            .filter(user.eq(for_user)),
+            .filter(rocket_chat::schema::rooms_users::room_name.eq(&room))
+            .filter(rocket_chat::schema::rooms_users::user.eq(for_user)),
     )
     .execute(connection);
 
-    println!("deleted_rooms_users: {:?}", deleted_room_user);
-
     if deleted_room_user == Ok(1) {
-        if let Ok(room_user) = rooms_users
-            .filter(room_name.eq(&room))
+        if let Ok(room_user) = rocket_chat::schema::rooms_users::table
+            .filter(rocket_chat::schema::rooms_users::room_name.eq(&room))
             .select(RoomUserDB::as_select())
             .load(connection)
         {
             if room_user.len() > 0 {
-                return format!("GRANTED");
+                return Ok("GRANTED");
             } else if room_user.len() == 0 {
                 if let Ok(_deleted) = diesel::delete(
                     rocket_chat::schema::rooms::table
@@ -227,19 +237,22 @@ fn remove_room(form: Form<Room>) -> String {
                 )
                 .execute(connection)
                 {
-                    return format!("GRANTED");
+                    return Ok("GRANTED");
                 } else {
-                    return format!("DB ERROR");
+                    return Err(status::Custom(
+                        Status::InternalServerError,
+                        "Errore nel database",
+                    ));
                 }
             }
         }
     }
 
-    format!("REJECTED")
+    Err(status::Custom(Status::Unauthorized, "can't"))
 }
 
 #[post("/search-rooms")]
-fn search_rooms() -> Json<Vec<PubRoom>> {
+fn search_rooms() -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
@@ -260,10 +273,12 @@ fn search_rooms() -> Json<Vec<PubRoom>> {
             })
             .collect::<Vec<PubRoom>>();
 
-        Json(pub_rooms)
+        Ok(Json(pub_rooms))
     } else {
-        let default: Vec<PubRoom> = Vec::new();
-        Json(default)
+        Err(status::Custom(
+            Status::InternalServerError,
+            "Errore nel database",
+        ))
     }
 }
 
@@ -329,8 +344,10 @@ fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
 }
 
 #[post("/signup", data = "<form>")]
-fn signup(form: Form<User>, state: &State<AppState>) -> String {
-    use diesel::insert_into;
+fn signup(
+    form: Form<User>,
+    state: &State<AppState>,
+) -> Result<&'static str, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
@@ -338,22 +355,22 @@ fn signup(form: Form<User>, state: &State<AppState>) -> String {
     let passw = decrypt_rsa(userr.password, state);
     let connection = &mut rocket_chat::establish_connection();
 
-    let result = insert_into(users)
+    let result = diesel::insert_into(users)
         .values((
-            username.eq(userr.username.clone()),
-            passwd.eq(hash_password(passw)),
+            rocket_chat::schema::users::username.eq(userr.username.clone()),
+            rocket_chat::schema::users::passwd.eq(hash_password(passw)),
         ))
         .execute(connection);
-    let result2 = insert_into(rooms_users)
+    let result2 = diesel::insert_into(rooms_users)
         .values((
             rocket_chat::schema::rooms_users::room_name.eq("lobby"),
-            user.eq(userr.username),
+            rocket_chat::schema::rooms_users::user.eq(userr.username),
         ))
         .execute(connection);
     if result == Ok(1) && result2 == Ok(1) {
-        format!("GRANTED")
+        Ok("GRANTED")
     } else {
-        format!("REJECTED")
+        Err(status::Custom(Status::Unauthorized, "Non autorizzato"))
     }
 }
 
