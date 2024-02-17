@@ -70,16 +70,6 @@ function removeRoom(name) {
         })
             .then((response) => {
                 if (response.ok) {
-                    return response.text();
-                } else {
-                    return response.text().then((text) => {
-                        throw new Error(text);
-                    });
-                }
-            })
-            .then((data) => {
-                console.log(data);
-                if (data === "GRANTED") {
                     let rooms = roomListDiv.querySelectorAll(".room");
                     if (
                         rooms[0].innerHTML == name &&
@@ -95,11 +85,15 @@ function removeRoom(name) {
                     roomListDiv.removeChild(node);
                     delete STATE.rooms[name];
                     return true;
+                } else {
+                    return response.text().then((text) => {
+                        throw new Error(text);
+                    });
                 }
-                return;
             })
             .catch((err) => {
                 console.error(err);
+                return false;
             });
     }
 }
@@ -490,16 +484,23 @@ function init() {
                     rsa_client_key,
                 }),
             })
-                .then((response) => response.text())
+                .then((response) => {
+                    if (response.ok) {
+                        return response.text();
+                    } else {
+                        return response.text().then((text) => {
+                            throw new Error(text);
+                        });
+                    }
+                })
                 .then((data) => {
                     console.log(data);
-                    if (data != "REJECTED") {
-                        cleanPopup();
-                        closePopup();
-                        if (!addRoom(room, decryptRsa(data))) return;
-                    }
                     cleanPopup();
-                    return;
+                    closePopup();
+                    addRoom(room, decryptRsa(data));
+                })
+                .catch((err) => {
+                    console.error(err);
                 });
         }
     });
