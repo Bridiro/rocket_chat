@@ -525,7 +525,6 @@ function init() {
             .getElementById("rooms-list")
             .querySelectorAll("option");
         for (var i = 0; i < options.length; i++) {
-            console.log(options[i].dataset.rp);
             if (roomName == options[i].value) {
                 addRoomButton.innerHTML = "Join";
                 if (options[i].dataset.rp == "true") {
