@@ -20,6 +20,7 @@ diesel::table! {
         require_password -> Bool,
         hidden_room -> Bool,
         aes_key -> Text,
+        salt -> Nullable<Text>,
     }
 }
 
@@ -37,6 +38,7 @@ diesel::table! {
         #[max_length = 20]
         username -> Varchar,
         passwd -> Text,
+        salt -> Text,
     }
 }
 

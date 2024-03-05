@@ -28,6 +28,8 @@ use rsa::{
 use sha2::{Digest, Sha512};
 use std::{error::Error, sync::Mutex};
 
+const PEPPER: &str = "Zk4pGkvF9n5FPXSvrccl0XR33ach0+Vf/rliGZUUc+U=";
+
 struct KeyPair {
     pub pub_key: RsaPublicKey,
     pub priv_key: RsaPrivateKey,
@@ -84,6 +86,22 @@ struct Room {
     hidden: bool,
     user: String,
     rsa_client_key: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct SearchRoom {
+    room: String,
+    require_password: bool,
+}
+
+impl SearchRoom {
+    fn new(room: String, require_password: bool) -> SearchRoom {
+        SearchRoom {
+            room: room,
+            require_password: require_password,
+        }
+    }
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -153,7 +171,13 @@ fn add_room(
         // Stanza già esistente
         for r in roomsdb {
             if (room.require_password
-                && r.passwd == Some(hash_password(decrypt_rsa(room.password.unwrap(), state))))
+                && r.passwd
+                    == Some(hash_password(format!(
+                        "{}{}{}",
+                        decrypt_rsa(room.password.unwrap(), state),
+                        r.salt.unwrap(),
+                        PEPPER,
+                    ))))
                 || !r.require_password
             {
                 let result = diesel::insert_into(rooms_users)
@@ -181,13 +205,19 @@ fn add_room(
         }
 
         // Stanza da creare
-        let key = generate_aes256_key();
+        let key = generate_32_byte_random();
+        let sale = generate_32_byte_random();
         let insert_room = diesel::insert_into(rooms)
             .values((
                 rocket_chat::schema::rooms::room_name.eq(&room.room),
                 rocket_chat::schema::rooms::passwd.eq(
                     if room.password != Some("null".to_string()) {
-                        Some(hash_password(decrypt_rsa(room.password.unwrap(), state)))
+                        Some(hash_password(format!(
+                            "{}{}{}",
+                            decrypt_rsa(room.password.unwrap(), state),
+                            sale,
+                            PEPPER,
+                        )))
                     } else {
                         None
                     },
@@ -195,6 +225,7 @@ fn add_room(
                 rocket_chat::schema::rooms::require_password.eq(room.require_password),
                 rocket_chat::schema::rooms::hidden_room.eq(room.hidden),
                 rocket_chat::schema::rooms::aes_key.eq(&key),
+                rocket_chat::schema::rooms::salt.eq(sale),
             ))
             .execute(connection);
         let insert_room_user = diesel::insert_into(rooms_users)
@@ -245,7 +276,7 @@ fn remove_room(form: Form<Room>) -> Result<(), status::Custom<&'static str>> {
 }
 
 #[post("/search-rooms")]
-fn search_rooms() -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
+fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
@@ -256,15 +287,8 @@ fn search_rooms() -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
     {
         let pub_rooms = roomsdb
             .iter()
-            .map(|room| {
-                PubRoom::new(
-                    room.room_name.clone(),
-                    room.require_password,
-                    "".to_string(),
-                    Vec::<Message>::new(),
-                )
-            })
-            .collect::<Vec<PubRoom>>();
+            .map(|room| SearchRoom::new(room.room_name.clone(), room.require_password))
+            .collect::<Vec<SearchRoom>>();
 
         Ok(Json(pub_rooms))
     } else {
@@ -287,10 +311,12 @@ fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
     if let Ok(result) = users
         .limit(1)
         .filter(username.eq(&userform.username))
-        .select(passwd)
-        .load::<String>(connection)
+        .select(UserDB::as_select())
+        .load(connection)
     {
-        if result.len() > 0 && hash_password(passw) == result[0] {
+        if result.len() > 0
+            && hash_password(format!("{}{}{}", passw, result[0].salt, PEPPER)) == result[0].passwd
+        {
             if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
                 .inner_join(rocket_chat::schema::rooms_users::table)
                 .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
@@ -346,12 +372,15 @@ fn signup(
 
     let userr = form.into_inner();
     let passw = decrypt_rsa(userr.password, state);
+    let sale = generate_32_byte_random();
     let connection = &mut rocket_chat::establish_connection();
 
     let result = diesel::insert_into(users)
         .values((
             rocket_chat::schema::users::username.eq(userr.username.clone()),
-            rocket_chat::schema::users::passwd.eq(hash_password(passw)),
+            rocket_chat::schema::users::passwd
+                .eq(hash_password(format!("{}{}{}", passw, &sale, PEPPER))),
+            rocket_chat::schema::users::salt.eq(sale),
         ))
         .execute(connection);
     let result2 = diesel::insert_into(rooms_users)
@@ -458,7 +487,7 @@ fn get_rsa_pub_key(state: &State<AppState>) -> String {
         .unwrap()
 }
 
-fn generate_aes256_key() -> String {
+fn generate_32_byte_random() -> String {
     let mut key = [0u8; 32];
     match rand::thread_rng().try_fill(&mut key) {
         Ok(_) => BASE64_STANDARD.encode(key),

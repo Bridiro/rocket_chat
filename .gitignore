@@ -1,2 +1,4 @@
 /target
 .env
+certificate.pem
+private.key

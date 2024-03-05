@@ -26,6 +26,7 @@ pub struct RoomDB {
     pub require_password: bool,
     pub hidden_room: bool,
     pub aes_key: String,
+    pub salt: Option<String>,
 }
 
 #[derive(Identifiable, Selectable, Queryable, Associations, Debug)]
@@ -44,4 +45,5 @@ pub struct RoomUserDB {
 pub struct UserDB {
     pub username: String,
     pub passwd: String,
+    pub salt: String,
 }
