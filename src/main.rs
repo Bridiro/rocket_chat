@@ -6,11 +6,12 @@ use diesel::prelude::*;
 use rand::Rng;
 use rocket::{
     form::Form,
-    fs::{relative, FileServer},
+    fs::{relative, FileServer, NamedFile},
     http::Status,
     response::{
         status,
         stream::{Event, EventStream},
+        Redirect,
     },
     serde::{json::Json, Deserialize, Serialize},
     tokio::{
@@ -20,13 +21,14 @@ use rocket::{
     Shutdown, State,
 };
 use rocket_chat::models::*;
+use rocket_session_store::{memory::MemoryStore, CookieConfig, Session, SessionStore};
 use rsa::{
     pkcs1::EncodeRsaPublicKey,
     pkcs8::{DecodePublicKey, LineEnding},
     Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
 };
 use sha2::{Digest, Sha512};
-use std::{error::Error, sync::Mutex};
+use std::{error::Error, sync::Mutex, time::Duration};
 
 const PEPPER: &str = "Zk4pGkvF9n5FPXSvrccl0XR33ach0+Vf/rliGZUUc+U=";
 
@@ -50,11 +52,26 @@ struct AppState {
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
-struct User {
+struct GetRoomsUser {
+    #[field(validate = len(..20))]
+    username: String,
+    rsa_key: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct LoginUser {
     #[field(validate = len(..20))]
     username: String,
     password: String,
-    rsa_key: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct SignupUser {
+    #[field(validate = len(..20))]
+    username: String,
+    password: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -86,6 +103,13 @@ struct Room {
     hidden: bool,
     user: String,
     rsa_client_key: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct ToRemoveRoom {
+    room: String,
+    user: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -256,7 +280,7 @@ fn add_room(
 }
 
 #[post("/remove-room", data = "<form>")]
-fn remove_room(form: Form<Room>) -> Result<(), status::Custom<&'static str>> {
+fn remove_room(form: Form<ToRemoveRoom>) -> Result<(), status::Custom<&'static str>> {
     let connection = &mut rocket_chat::establish_connection();
 
     let room = form.clone().room;
@@ -299,13 +323,70 @@ fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>>
     }
 }
 
+#[post("/get-rooms", data = "<form>")]
+fn get_rooms(form: Form<GetRoomsUser>) -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
+    let userform = form.into_inner();
+    let rsa_key = userform.rsa_key;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
+        .inner_join(rocket_chat::schema::rooms_users::table)
+        .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
+        .select((RoomDB::as_select(), RoomUserDB::as_select()))
+        .load::<(RoomDB, RoomUserDB)>(connection)
+    {
+        let mut pub_rooms: Vec<PubRoom> = Vec::new();
+        for (room, room_user) in room_with_roomuser {
+            if let Ok(messages_for_room) = MessageDB::belonging_to(&room)
+                .select(MessageDB::as_select())
+                .load(connection)
+            {
+                pub_rooms.push(PubRoom::new(
+                    room_user.room_name,
+                    false,
+                    encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
+                    messages_for_room
+                        .iter()
+                        .map(|mdb| {
+                            Message::new(
+                                mdb.room_name.clone(),
+                                mdb.username.clone(),
+                                mdb.content.clone(),
+                            )
+                        })
+                        .collect::<Vec<Message>>(),
+                ))
+            }
+        }
+
+        Ok(Json(pub_rooms))
+    } else {
+        Err(status::Custom(
+            Status::InternalServerError,
+            "Database error",
+        ))
+    }
+}
+
+#[get("/get-user")]
+async fn get_user(session: Session<'_, String>) -> Result<String, Redirect> {
+    if let Ok(usr) = session.get().await {
+        Ok(usr.unwrap())
+    } else {
+        Err(Redirect::to("/"))
+    }
+}
+
 #[post("/login", data = "<form>")]
-fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
+async fn login(
+    form: Form<LoginUser>,
+    state: &State<AppState>,
+    session: Session<'_, String>,
+) -> Result<&'static str, status::Custom<&'static str>> {
     use rocket_chat::schema::users::dsl::*;
 
     let userform = form.into_inner();
     let passw = decrypt_rsa(userform.password, state);
-    let rsa_key = userform.rsa_key;
     let connection = &mut rocket_chat::establish_connection();
 
     if let Ok(result) = users
@@ -317,55 +398,30 @@ fn login(form: Form<User>, state: &State<AppState>) -> Json<Vec<PubRoom>> {
         if result.len() > 0
             && hash_password(format!("{}{}{}", passw, result[0].salt, PEPPER)) == result[0].passwd
         {
-            if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
-                .inner_join(rocket_chat::schema::rooms_users::table)
-                .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
-                .select((RoomDB::as_select(), RoomUserDB::as_select()))
-                .load::<(RoomDB, RoomUserDB)>(connection)
-            {
-                let mut pub_rooms: Vec<PubRoom> = Vec::new();
-                for (room, room_user) in room_with_roomuser {
-                    if let Ok(messages_for_room) = MessageDB::belonging_to(&room)
-                        .select(MessageDB::as_select())
-                        .load(connection)
-                    {
-                        pub_rooms.push(PubRoom::new(
-                            room_user.room_name,
-                            false,
-                            encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
-                            messages_for_room
-                                .iter()
-                                .map(|mdb| {
-                                    Message::new(
-                                        mdb.room_name.clone(),
-                                        mdb.username.clone(),
-                                        mdb.content.clone(),
-                                    )
-                                })
-                                .collect::<Vec<Message>>(),
-                        ))
-                    }
-                }
-
-                Json(pub_rooms)
+            if let Ok(_) = session.set(userform.username).await {
+                Ok("GRANTED")
             } else {
-                let empty: Vec<PubRoom> = Vec::new();
-                Json(empty)
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Unable to set cookies",
+                ))
             }
         } else {
-            let empty: Vec<PubRoom> = Vec::new();
-            Json(empty)
+            Err(status::Custom(Status::Unauthorized, "Not authorized"))
         }
     } else {
-        let empty: Vec<PubRoom> = Vec::new();
-        Json(empty)
+        Err(status::Custom(
+            Status::InternalServerError,
+            "Database error",
+        ))
     }
 }
 
 #[post("/signup", data = "<form>")]
-fn signup(
-    form: Form<User>,
+async fn signup(
+    form: Form<SignupUser>,
     state: &State<AppState>,
+    session: Session<'_, String>,
 ) -> Result<&'static str, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
@@ -386,11 +442,18 @@ fn signup(
     let result2 = diesel::insert_into(rooms_users)
         .values((
             rocket_chat::schema::rooms_users::room_name.eq("lobby"),
-            rocket_chat::schema::rooms_users::user.eq(userr.username),
+            rocket_chat::schema::rooms_users::user.eq(userr.username.clone()),
         ))
         .execute(connection);
     if result == Ok(1) && result2 == Ok(1) {
-        Ok("GRANTED")
+        if let Ok(_) = session.set(userr.username).await {
+            Ok("GRANTED")
+        } else {
+            Err(status::Custom(
+                Status::InternalServerError,
+                "Unable to set cookies",
+            ))
+        }
     } else {
         Err(status::Custom(Status::Unauthorized, "Not authorized"))
     }
@@ -495,9 +558,38 @@ fn generate_32_byte_random() -> String {
     }
 }
 
+#[get("/")]
+async fn index_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
+    let name: Option<String> = session.get().await.unwrap();
+    if let Some(_) = name {
+        Err(Redirect::to(uri!(chat_page)))
+    } else {
+        Ok(NamedFile::open("pages/index.html").await.ok())
+    }
+}
+
+#[get("/chat")]
+async fn chat_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
+    let name: Option<String> = session.get().await.unwrap();
+    if let Some(_) = name {
+        Ok(NamedFile::open("pages/chat.html").await.ok())
+    } else {
+        Err(Redirect::to(uri!(index_page)))
+    }
+}
+
 #[launch]
 fn rocket() -> _ {
+    let memory_store: MemoryStore<String> = MemoryStore::default();
+    let store: SessionStore<String> = SessionStore {
+        store: Box::new(memory_store),
+        name: "token".into(),
+        duration: Duration::from_secs(3600 * 24 * 3),
+        cookie: CookieConfig::default(),
+    };
+
     rocket::build()
+        .attach(store.fairing())
         .manage(channel::<Message>(1024).0)
         .manage(AppState {
             keys: Mutex::new(Some(generate_key_pair())),
@@ -505,15 +597,19 @@ fn rocket() -> _ {
         .mount(
             "/",
             routes![
+                index_page,
+                chat_page,
+                get_user,
                 post,
                 add_room,
                 remove_room,
                 search_rooms,
+                get_rooms,
                 login,
                 signup,
                 get_rsa_pub_key,
                 events
             ],
         )
-        .mount("/", FileServer::from(relative!("static")))
+        .mount("/static", FileServer::from(relative!("static")))
 }

@@ -2,3 +2,4 @@
 .env
 certificate.pem
 private.key
+chiavi_rocket_chat.pem
