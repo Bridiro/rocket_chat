@@ -51,21 +51,13 @@ function removeRoom(name) {
     }
 
     const room = name;
-    const password = "";
-    const require_password = false;
-    const hidden = "";
     const user = STATE.user;
-    const rsa_client_key = "";
     if (STATE.connected) {
         fetch("/remove-room", {
             method: "POST",
             body: new URLSearchParams({
                 room,
-                password,
-                require_password,
-                hidden,
                 user,
-                rsa_client_key,
             }),
         })
             .then((response) => {
@@ -158,6 +150,7 @@ function addMessage(room, username, message, push = false) {
 // Subscribe to the event source at `uri` with exponential backoff reconnect.
 function subscribe(uri) {
     var retryTime = 1;
+    var done = false;
 
     function connect(uri) {
         const events = new EventSource(uri);
@@ -179,6 +172,10 @@ function subscribe(uri) {
             setConnectedStatus(true);
             console.log(`connected to event stream at ${uri}`);
             getPubKey();
+            if (!done) {
+                setup();
+                done = true;
+            }
             retryTime = 1;
         });
 
@@ -223,11 +220,6 @@ function cleanPopup() {
     document.getElementById("check-password").disabled = false;
     document.getElementById("new-room-name").value = "";
     document.getElementById("new-room-password").value = "";
-}
-
-// CLose the login
-function closeLogin() {
-    document.getElementById("login").style.display = "none";
 }
 
 function encryptAes(message, key) {
@@ -277,104 +269,76 @@ function getPubKey() {
     }
 }
 
+function getRooms() {
+    console.log(STATE.user);
+    const username = STATE.user;
+    const rsa_key = forge.pki.publicKeyToPem(STATE.clientKeys.publicKey);
+    fetch("/get-rooms", {
+        method: "POST",
+        body: new URLSearchParams({ username, rsa_key }),
+    })
+        .then((response) => {
+            if (response.ok) {
+                return response.text();
+            } else {
+                return response.text().then((text) => {
+                    throw new Error(text);
+                });
+            }
+        })
+        .then((data) => {
+            const parsed = JSON.parse(data);
+            console.log(parsed);
+            if (parsed.length > 0) {
+                parsed.forEach((room) => {
+                    addRoom(room.room, decryptRsa(room.key));
+                    room.messages.forEach((message) => {
+                        addMessage(
+                            message.room,
+                            message.username,
+                            decryptAes(
+                                message.message,
+                                STATE.rooms[message.room].key
+                            ),
+                            true
+                        );
+                    });
+                });
+                return;
+            }
+            return;
+        })
+        .catch((err) => {
+            console.error(err);
+        });
+}
+
+function setup() {
+    fetch("/get-user", {
+        method: "GET",
+    })
+        .then((response) => {
+            if (response.ok) {
+                return response.text();
+            } else {
+                return response.text().then((text) => {
+                    throw new Error(text);
+                });
+            }
+        })
+        .then((data) => {
+            STATE.user = data;
+            document.title += " | " + STATE.user;
+            getRooms();
+        })
+        .catch((err) => {
+            console.error(err);
+        });
+}
+
 function init() {
     // Generate RSA keys for the client
     STATE.clientKeys = forge.pki.rsa.generateKeyPair({ bits: 2048 });
-
-    // Set up handler for the login form
-    document.getElementById("login-form").addEventListener("submit", (e) => {
-        e.preventDefault();
-
-        if (STATE.connected) {
-            getPubKey();
-            const username = document.getElementById("login-username").value;
-            const password = encryptRsa(
-                document.getElementById("login-password").value
-            );
-            const rsa_key = forge.pki.publicKeyToPem(
-                STATE.clientKeys.publicKey
-            );
-
-            fetch("/login", {
-                method: "POST",
-                body: new URLSearchParams({
-                    username,
-                    password,
-                    rsa_key,
-                }),
-            })
-                .then((response) => response.text())
-                .then((data) => {
-                    const parsed = JSON.parse(data);
-                    console.log(parsed);
-                    if (parsed.length > 0) {
-                        parsed.forEach((room) => {
-                            addRoom(room.room, decryptRsa(room.key));
-                            room.messages.forEach((message) => {
-                                addMessage(
-                                    message.room,
-                                    message.username,
-                                    decryptAes(
-                                        message.message,
-                                        STATE.rooms[message.room].key
-                                    ),
-                                    true
-                                );
-                            });
-                        });
-                        document.getElementById("login").style.display = "none";
-                        STATE.user = username;
-                        document.title += " | " + username;
-                        return;
-                    }
-                    return;
-                });
-        }
-    });
-
-    document.getElementById("sign-up-button").addEventListener("click", (e) => {
-        e.preventDefault();
-
-        if (STATE.connected) {
-            getPubKey();
-            const username = document.getElementById("login-username").value;
-            const password = encryptRsa(
-                document.getElementById("login-password").value
-            );
-            const rsa_key = forge.pki.publicKeyToPem(
-                STATE.clientKeys.publicKey
-            );
-
-            fetch("/signup", {
-                method: "POST",
-                body: new URLSearchParams({
-                    username,
-                    password,
-                    rsa_key,
-                }),
-            })
-                .then((response) => {
-                    if (response.ok) {
-                        return response.text();
-                    } else {
-                        return response.text().then((text) => {
-                            throw new Error(text);
-                        });
-                    }
-                })
-                .then((data) => {
-                    console.log(data);
-                    if (data === "GRANTED") {
-                        document.getElementById("login").style.display = "none";
-                        STATE.user = username;
-                        document.title += " | " + username;
-                    }
-                })
-                .catch((err) => {
-                    console.error(err);
-                });
-        }
-    });
 
     // Set up the handler to post a message.
     document.getElementById("new-message").addEventListener("submit", (e) => {

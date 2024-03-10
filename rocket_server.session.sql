@@ -1,1 +1,1 @@
-SHOW TRIGGERS
+DELETE FROM users WHERE username="Dona"
