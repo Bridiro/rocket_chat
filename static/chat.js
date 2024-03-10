@@ -273,7 +273,7 @@ function getRooms() {
     console.log(STATE.user);
     const username = STATE.user;
     const rsa_key = forge.pki.publicKeyToPem(STATE.clientKeys.publicKey);
-    fetch("/get-rooms", {
+    fetch("/get-personal-rooms", {
         method: "POST",
         body: new URLSearchParams({ username, rsa_key }),
     })
@@ -383,8 +383,8 @@ function init() {
 
             let roomDataList = document.getElementById("rooms-list");
             if (STATE.connected) {
-                fetch("/search-rooms", {
-                    method: "POST",
+                fetch("/get-rooms", {
+                    method: "GET",
                 })
                     .then((response) => {
                         if (response.ok) {

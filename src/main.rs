@@ -149,121 +149,137 @@ impl PubRoom {
 }
 
 #[post("/message", data = "<form>")]
-fn post(
+async fn post(
     form: Form<Message>,
     queue: &State<Sender<Message>>,
+    session: Session<'_, String>,
 ) -> Result<(), status::Custom<&'static str>> {
     use diesel::insert_into;
 
-    let connection = &mut rocket_chat::establish_connection();
-    let message = form.into_inner();
+    if let Ok(Some(_)) = session.get().await {
+        let connection = &mut rocket_chat::establish_connection();
+        let message = form.into_inner();
 
-    if let Ok(_) = insert_into(rocket_chat::schema::messages::dsl::messages)
-        .values((
-            rocket_chat::schema::messages::room_name.eq(&message.room),
-            rocket_chat::schema::messages::username.eq(&message.username),
-            rocket_chat::schema::messages::content.eq(&message.message),
-        ))
-        .execute(connection)
-    {
-        let _res = queue.send(message);
-        Ok(())
+        if let Ok(_) = insert_into(rocket_chat::schema::messages::dsl::messages)
+            .values((
+                rocket_chat::schema::messages::room_name.eq(&message.room),
+                rocket_chat::schema::messages::username.eq(&message.username),
+                rocket_chat::schema::messages::content.eq(&message.message),
+            ))
+            .execute(connection)
+        {
+            let _res = queue.send(message);
+            Ok(())
+        } else {
+            Err(status::Custom(
+                Status::InternalServerError,
+                "error inserting message",
+            ))
+        }
     } else {
-        Err(status::Custom(
-            Status::InternalServerError,
-            "error inserting message",
-        ))
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
     }
 }
 
 #[post("/add-room", data = "<form>")]
-fn add_room(
+async fn add_room(
     form: Form<Room>,
     state: &State<AppState>,
+    session: Session<'_, String>,
 ) -> Result<String, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     use rocket_chat::schema::rooms_users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
-    let room = form.into_inner();
+    if let Ok(Some(_)) = session.get().await {
+        let room = form.into_inner();
 
-    if let Ok(roomsdb) = rooms
-        .filter(rocket_chat::schema::rooms::room_name.eq(&room.room))
-        .select(RoomDB::as_select())
-        .load(connection)
-    {
-        // Stanza già esistente
-        for r in roomsdb {
-            if (room.require_password
-                && r.passwd
-                    == Some(hash_password(format!(
-                        "{}{}{}",
-                        decrypt_rsa(room.password.unwrap(), state),
-                        r.salt.unwrap(),
-                        PEPPER,
-                    ))))
-                || !r.require_password
-            {
-                let result = diesel::insert_into(rooms_users)
-                    .values((
-                        rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                        rocket_chat::schema::rooms_users::user.eq(room.user),
-                    ))
-                    .execute(connection);
-                if result == Ok(1) {
-                    match encrypt_rsa(r.aes_key, room.rsa_client_key) {
-                        Ok(enc) => return Ok(enc),
-                        Err(_) => {
-                            return Err(status::Custom(Status::InternalServerError, "RSA error"));
-                        }
-                    }
-                } else {
-                    return Err(status::Custom(
-                        Status::InternalServerError,
-                        "Database error",
-                    ));
-                }
-            } else {
-                return Err(status::Custom(Status::Unauthorized, "Wrong password"));
-            }
-        }
-
-        // Stanza da creare
-        let key = generate_32_byte_random();
-        let sale = generate_32_byte_random();
-        let insert_room = diesel::insert_into(rooms)
-            .values((
-                rocket_chat::schema::rooms::room_name.eq(&room.room),
-                rocket_chat::schema::rooms::passwd.eq(
-                    if room.password != Some("null".to_string()) {
-                        Some(hash_password(format!(
+        if let Ok(roomsdb) = rooms
+            .filter(rocket_chat::schema::rooms::room_name.eq(&room.room))
+            .select(RoomDB::as_select())
+            .load(connection)
+        {
+            // Stanza già esistente
+            for r in roomsdb {
+                if (room.require_password
+                    && r.passwd
+                        == Some(hash_password(format!(
                             "{}{}{}",
                             decrypt_rsa(room.password.unwrap(), state),
-                            sale,
+                            r.salt.unwrap(),
                             PEPPER,
-                        )))
+                        ))))
+                    || !r.require_password
+                {
+                    let result = diesel::insert_into(rooms_users)
+                        .values((
+                            rocket_chat::schema::rooms_users::room_name.eq(room.room),
+                            rocket_chat::schema::rooms_users::user.eq(room.user),
+                        ))
+                        .execute(connection);
+                    if result == Ok(1) {
+                        match encrypt_rsa(r.aes_key, room.rsa_client_key) {
+                            Ok(enc) => return Ok(enc),
+                            Err(_) => {
+                                return Err(status::Custom(
+                                    Status::InternalServerError,
+                                    "RSA error",
+                                ));
+                            }
+                        }
                     } else {
-                        None
-                    },
-                ),
-                rocket_chat::schema::rooms::require_password.eq(room.require_password),
-                rocket_chat::schema::rooms::hidden_room.eq(room.hidden),
-                rocket_chat::schema::rooms::aes_key.eq(&key),
-                rocket_chat::schema::rooms::salt.eq(sale),
-            ))
-            .execute(connection);
-        let insert_room_user = diesel::insert_into(rooms_users)
-            .values((
-                rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                rocket_chat::schema::rooms_users::user.eq(room.user),
-            ))
-            .execute(connection);
-        if insert_room == Ok(1) && insert_room_user == Ok(1) {
-            match encrypt_rsa(key, room.rsa_client_key) {
-                Ok(enc) => Ok(enc),
-                Err(_) => {
-                    return Err(status::Custom(Status::InternalServerError, "RSA error"));
+                        return Err(status::Custom(
+                            Status::InternalServerError,
+                            "Database error",
+                        ));
+                    }
+                } else {
+                    return Err(status::Custom(Status::Unauthorized, "Wrong password"));
                 }
+            }
+
+            // Stanza da creare
+            let key = generate_32_byte_random();
+            let sale = generate_32_byte_random();
+            let insert_room = diesel::insert_into(rooms)
+                .values((
+                    rocket_chat::schema::rooms::room_name.eq(&room.room),
+                    rocket_chat::schema::rooms::passwd.eq(
+                        if room.password != Some("null".to_string()) {
+                            Some(hash_password(format!(
+                                "{}{}{}",
+                                decrypt_rsa(room.password.unwrap(), state),
+                                sale,
+                                PEPPER,
+                            )))
+                        } else {
+                            None
+                        },
+                    ),
+                    rocket_chat::schema::rooms::require_password.eq(room.require_password),
+                    rocket_chat::schema::rooms::hidden_room.eq(room.hidden),
+                    rocket_chat::schema::rooms::aes_key.eq(&key),
+                    rocket_chat::schema::rooms::salt.eq(sale),
+                ))
+                .execute(connection);
+            let insert_room_user = diesel::insert_into(rooms_users)
+                .values((
+                    rocket_chat::schema::rooms_users::room_name.eq(room.room),
+                    rocket_chat::schema::rooms_users::user.eq(room.user),
+                ))
+                .execute(connection);
+            if insert_room == Ok(1) && insert_room_user == Ok(1) {
+                match encrypt_rsa(key, room.rsa_client_key) {
+                    Ok(enc) => Ok(enc),
+                    Err(_) => {
+                        return Err(status::Custom(Status::InternalServerError, "RSA error"));
+                    }
+                }
+            } else {
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Database error",
+                ))
             }
         } else {
             Err(status::Custom(
@@ -272,34 +288,38 @@ fn add_room(
             ))
         }
     } else {
-        Err(status::Custom(
-            Status::InternalServerError,
-            "Database error",
-        ))
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
     }
 }
 
 #[post("/remove-room", data = "<form>")]
-fn remove_room(form: Form<ToRemoveRoom>) -> Result<(), status::Custom<&'static str>> {
+async fn remove_room(
+    form: Form<ToRemoveRoom>,
+    session: Session<'_, String>,
+) -> Result<(), status::Custom<&'static str>> {
     let connection = &mut rocket_chat::establish_connection();
 
-    let room = form.clone().room;
-    let for_user = form.into_inner().user;
+    if let Ok(Some(_)) = session.get().await {
+        let room = form.clone().room;
+        let for_user = form.into_inner().user;
 
-    if let Ok(_) = diesel::delete(
-        rocket_chat::schema::rooms_users::table
-            .filter(rocket_chat::schema::rooms_users::room_name.eq(&room))
-            .filter(rocket_chat::schema::rooms_users::user.eq(for_user)),
-    )
-    .execute(connection)
-    {
-        Ok(())
+        if let Ok(_) = diesel::delete(
+            rocket_chat::schema::rooms_users::table
+                .filter(rocket_chat::schema::rooms_users::room_name.eq(&room))
+                .filter(rocket_chat::schema::rooms_users::user.eq(for_user)),
+        )
+        .execute(connection)
+        {
+            Ok(())
+        } else {
+            Err(status::Custom(Status::Unauthorized, "can't"))
+        }
     } else {
-        Err(status::Custom(Status::Unauthorized, "can't"))
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
     }
 }
 
-#[post("/search-rooms")]
+#[get("/get-rooms")]
 fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
@@ -323,55 +343,61 @@ fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>>
     }
 }
 
-#[post("/get-rooms", data = "<form>")]
-fn get_rooms(form: Form<GetRoomsUser>) -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
+#[post("/get-personal-rooms", data = "<form>")]
+async fn get_rooms(
+    form: Form<GetRoomsUser>,
+    session: Session<'_, String>,
+) -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
     let userform = form.into_inner();
     let rsa_key = userform.rsa_key;
     let connection = &mut rocket_chat::establish_connection();
-
-    if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
-        .inner_join(rocket_chat::schema::rooms_users::table)
-        .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
-        .select((RoomDB::as_select(), RoomUserDB::as_select()))
-        .load::<(RoomDB, RoomUserDB)>(connection)
-    {
-        let mut pub_rooms: Vec<PubRoom> = Vec::new();
-        for (room, room_user) in room_with_roomuser {
-            if let Ok(messages_for_room) = MessageDB::belonging_to(&room)
-                .select(MessageDB::as_select())
-                .load(connection)
-            {
-                pub_rooms.push(PubRoom::new(
-                    room_user.room_name,
-                    false,
-                    encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
-                    messages_for_room
-                        .iter()
-                        .map(|mdb| {
-                            Message::new(
-                                mdb.room_name.clone(),
-                                mdb.username.clone(),
-                                mdb.content.clone(),
-                            )
-                        })
-                        .collect::<Vec<Message>>(),
-                ))
+    if let Ok(Some(_)) = session.get().await {
+        if let Ok(room_with_roomuser) = rocket_chat::schema::rooms::table
+            .inner_join(rocket_chat::schema::rooms_users::table)
+            .filter(rocket_chat::schema::rooms_users::user.eq(userform.username))
+            .select((RoomDB::as_select(), RoomUserDB::as_select()))
+            .load::<(RoomDB, RoomUserDB)>(connection)
+        {
+            let mut pub_rooms: Vec<PubRoom> = Vec::new();
+            for (room, room_user) in room_with_roomuser {
+                if let Ok(messages_for_room) = MessageDB::belonging_to(&room)
+                    .select(MessageDB::as_select())
+                    .load(connection)
+                {
+                    pub_rooms.push(PubRoom::new(
+                        room_user.room_name,
+                        false,
+                        encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
+                        messages_for_room
+                            .iter()
+                            .map(|mdb| {
+                                Message::new(
+                                    mdb.room_name.clone(),
+                                    mdb.username.clone(),
+                                    mdb.content.clone(),
+                                )
+                            })
+                            .collect::<Vec<Message>>(),
+                    ))
+                }
             }
-        }
 
-        Ok(Json(pub_rooms))
+            Ok(Json(pub_rooms))
+        } else {
+            Err(status::Custom(
+                Status::InternalServerError,
+                "Database error",
+            ))
+        }
     } else {
-        Err(status::Custom(
-            Status::InternalServerError,
-            "Database error",
-        ))
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
     }
 }
 
 #[get("/get-user")]
 async fn get_user(session: Session<'_, String>) -> Result<String, Redirect> {
-    if let Ok(usr) = session.get().await {
-        Ok(usr.unwrap())
+    if let Ok(Some(usr)) = session.get().await {
+        Ok(usr)
     } else {
         Err(Redirect::to("/"))
     }
@@ -560,8 +586,7 @@ fn generate_32_byte_random() -> String {
 
 #[get("/")]
 async fn index_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
-    let name: Option<String> = session.get().await.unwrap();
-    if let Some(_) = name {
+    if let Ok(Some(_)) = session.get().await {
         Err(Redirect::to(uri!(chat_page)))
     } else {
         Ok(NamedFile::open("pages/index.html").await.ok())
@@ -570,8 +595,7 @@ async fn index_page(session: Session<'_, String>) -> Result<Option<NamedFile>, R
 
 #[get("/chat")]
 async fn chat_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
-    let name: Option<String> = session.get().await.unwrap();
-    if let Some(_) = name {
+    if let Ok(Some(_)) = session.get().await {
         Ok(NamedFile::open("pages/chat.html").await.ok())
     } else {
         Err(Redirect::to(uri!(index_page)))
