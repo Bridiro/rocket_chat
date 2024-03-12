@@ -5,7 +5,7 @@ use base64::prelude::*;
 use diesel::prelude::*;
 use rand::Rng;
 use rocket::{
-    form::Form,
+    form::{self, Form},
     fs::{relative, FileServer, NamedFile},
     http::Status,
     response::{
@@ -53,7 +53,7 @@ struct AppState {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct GetRoomsUser {
-    #[field(validate = len(..20))]
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     username: String,
     rsa_key: String,
 }
@@ -61,26 +61,29 @@ struct GetRoomsUser {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct LoginUser {
-    #[field(validate = len(..20))]
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     username: String,
+    #[field(validate = len(1..))]
     password: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct SignupUser {
-    #[field(validate = len(..20))]
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     username: String,
+    #[field(validate = len(1..))]
     password: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct Message {
-    #[field(validate = len(..30))]
+    #[field(validate = structval(1, 30).or_else(msg!("room must be between 1 and 30 chars")))]
     room: String,
-    #[field(validate = len(..20))]
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     username: String,
+    #[field(validate = len(1..))]
     message: String,
 }
 
@@ -97,10 +100,12 @@ impl Message {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct Room {
+    #[field(validate = structval(1, 30).or_else(msg!("room must be between 1 and 30 chars")))]
     room: String,
     password: Option<String>,
     require_password: bool,
     hidden: bool,
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     user: String,
     rsa_client_key: String,
 }
@@ -108,13 +113,16 @@ struct Room {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct ToRemoveRoom {
+    #[field(validate = structval(1, 30).or_else(msg!("room must be between 1 and 30 chars")))]
     room: String,
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
     user: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
 struct SearchRoom {
+    #[field(validate = structval(1, 30).or_else(msg!("room must be between 1 and 30 chars")))]
     room: String,
     require_password: bool,
 }
@@ -132,20 +140,26 @@ impl SearchRoom {
 #[serde(crate = "rocket::serde")]
 struct PubRoom {
     room: String,
-    require_password: bool,
     key: String,
     messages: Vec<Message>,
 }
 
 impl PubRoom {
-    fn new(room: String, require_password: bool, key: String, messages: Vec<Message>) -> PubRoom {
+    fn new(room: String, key: String, messages: Vec<Message>) -> PubRoom {
         PubRoom {
             room: room,
-            require_password: require_password,
             key: key,
             messages: messages,
         }
     }
+}
+
+fn structval<'v>(val: &String, min: usize, max: usize) -> form::Result<'v, ()> {
+    let trimmed = val.trim();
+    if trimmed.len() < min || trimmed.len() > max {
+        Err(rocket::form::Error::validation("invalid string"))?;
+    }
+    Ok(())
 }
 
 #[post("/message", data = "<form>")]
@@ -186,7 +200,7 @@ async fn add_room(
     form: Form<Room>,
     state: &State<AppState>,
     session: Session<'_, String>,
-) -> Result<String, status::Custom<&'static str>> {
+) -> Result<Json<PubRoom>, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     use rocket_chat::schema::rooms_users::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
@@ -201,31 +215,46 @@ async fn add_room(
         {
             // Stanza già esistente
             for r in roomsdb {
-                if (room.require_password
+                if (room.require_password.clone()
                     && r.passwd
                         == Some(hash_password(format!(
                             "{}{}{}",
-                            decrypt_rsa(room.password.unwrap(), state),
-                            r.salt.unwrap(),
+                            decrypt_rsa(room.password.clone().unwrap(), state),
+                            r.salt.clone().unwrap(),
                             PEPPER,
                         ))))
                     || !r.require_password
                 {
                     let result = diesel::insert_into(rooms_users)
                         .values((
-                            rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                            rocket_chat::schema::rooms_users::user.eq(room.user),
+                            rocket_chat::schema::rooms_users::room_name.eq(room.room.clone()),
+                            rocket_chat::schema::rooms_users::user.eq(&room.user.clone()),
                         ))
                         .execute(connection);
                     if result == Ok(1) {
-                        match encrypt_rsa(r.aes_key, room.rsa_client_key) {
-                            Ok(enc) => return Ok(enc),
-                            Err(_) => {
-                                return Err(status::Custom(
-                                    Status::InternalServerError,
-                                    "RSA error",
-                                ));
+                        if let Ok(enc) = encrypt_rsa(r.aes_key.clone(), room.rsa_client_key.clone())
+                        {
+                            if let Ok(messages_for_room) = MessageDB::belonging_to(&r)
+                                .select(MessageDB::as_select())
+                                .load(connection)
+                            {
+                                return Ok(Json(PubRoom::new(
+                                    room.room,
+                                    enc,
+                                    messages_for_room
+                                        .iter()
+                                        .map(|mdb| {
+                                            Message::new(
+                                                mdb.room_name.clone(),
+                                                mdb.username.clone(),
+                                                mdb.content.clone(),
+                                            )
+                                        })
+                                        .collect::<Vec<Message>>(),
+                                )));
                             }
+                        } else {
+                            return Err(status::Custom(Status::InternalServerError, "RSA error"));
                         }
                     } else {
                         return Err(status::Custom(
@@ -264,16 +293,15 @@ async fn add_room(
                 .execute(connection);
             let insert_room_user = diesel::insert_into(rooms_users)
                 .values((
-                    rocket_chat::schema::rooms_users::room_name.eq(room.room),
-                    rocket_chat::schema::rooms_users::user.eq(room.user),
+                    rocket_chat::schema::rooms_users::room_name.eq(&room.room),
+                    rocket_chat::schema::rooms_users::user.eq(&room.user),
                 ))
                 .execute(connection);
             if insert_room == Ok(1) && insert_room_user == Ok(1) {
-                match encrypt_rsa(key, room.rsa_client_key) {
-                    Ok(enc) => Ok(enc),
-                    Err(_) => {
-                        return Err(status::Custom(Status::InternalServerError, "RSA error"));
-                    }
+                if let Ok(enc) = encrypt_rsa(key, room.rsa_client_key) {
+                    return Ok(Json(PubRoom::new(room.room, enc, Vec::<Message>::new())));
+                } else {
+                    return Err(status::Custom(Status::InternalServerError, "RSA error"));
                 }
             } else {
                 Err(status::Custom(
@@ -366,7 +394,6 @@ async fn get_rooms(
                 {
                     pub_rooms.push(PubRoom::new(
                         room_user.room_name,
-                        false,
                         encrypt_rsa(room.aes_key, rsa_key.clone()).unwrap(),
                         messages_for_room
                             .iter()
@@ -399,7 +426,7 @@ async fn get_user(session: Session<'_, String>) -> Result<String, Redirect> {
     if let Ok(Some(usr)) = session.get().await {
         Ok(usr)
     } else {
-        Err(Redirect::to("/"))
+        Err(Redirect::to("/login"))
     }
 }
 
@@ -411,35 +438,40 @@ async fn login(
 ) -> Result<&'static str, status::Custom<&'static str>> {
     use rocket_chat::schema::users::dsl::*;
 
-    let userform = form.into_inner();
-    let passw = decrypt_rsa(userform.password, state);
-    let connection = &mut rocket_chat::establish_connection();
+    if let Ok(Some(_)) = session.get().await {
+        Err(status::Custom(Status::Unauthorized, "Not authorized"))
+    } else {
+        let userform = form.into_inner();
+        let passw = decrypt_rsa(userform.password, state);
+        let connection = &mut rocket_chat::establish_connection();
 
-    if let Ok(result) = users
-        .limit(1)
-        .filter(username.eq(&userform.username))
-        .select(UserDB::as_select())
-        .load(connection)
-    {
-        if result.len() > 0
-            && hash_password(format!("{}{}{}", passw, result[0].salt, PEPPER)) == result[0].passwd
+        if let Ok(result) = users
+            .limit(1)
+            .filter(username.eq(&userform.username))
+            .select(UserDB::as_select())
+            .load(connection)
         {
-            if let Ok(_) = session.set(userform.username).await {
-                Ok("GRANTED")
+            if result.len() > 0
+                && hash_password(format!("{}{}{}", passw, result[0].salt, PEPPER))
+                    == result[0].passwd
+            {
+                if let Ok(_) = session.set(userform.username).await {
+                    Ok("GRANTED")
+                } else {
+                    Err(status::Custom(
+                        Status::InternalServerError,
+                        "Unable to set cookies",
+                    ))
+                }
             } else {
-                Err(status::Custom(
-                    Status::InternalServerError,
-                    "Unable to set cookies",
-                ))
+                Err(status::Custom(Status::Unauthorized, "Not authorized"))
             }
         } else {
-            Err(status::Custom(Status::Unauthorized, "Not authorized"))
+            Err(status::Custom(
+                Status::InternalServerError,
+                "Database error",
+            ))
         }
-    } else {
-        Err(status::Custom(
-            Status::InternalServerError,
-            "Database error",
-        ))
     }
 }
 
@@ -452,36 +484,40 @@ async fn signup(
     use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
-    let userr = form.into_inner();
-    let passw = decrypt_rsa(userr.password, state);
-    let sale = generate_32_byte_random();
-    let connection = &mut rocket_chat::establish_connection();
-
-    let result = diesel::insert_into(users)
-        .values((
-            rocket_chat::schema::users::username.eq(userr.username.clone()),
-            rocket_chat::schema::users::passwd
-                .eq(hash_password(format!("{}{}{}", passw, &sale, PEPPER))),
-            rocket_chat::schema::users::salt.eq(sale),
-        ))
-        .execute(connection);
-    let result2 = diesel::insert_into(rooms_users)
-        .values((
-            rocket_chat::schema::rooms_users::room_name.eq("lobby"),
-            rocket_chat::schema::rooms_users::user.eq(userr.username.clone()),
-        ))
-        .execute(connection);
-    if result == Ok(1) && result2 == Ok(1) {
-        if let Ok(_) = session.set(userr.username).await {
-            Ok("GRANTED")
-        } else {
-            Err(status::Custom(
-                Status::InternalServerError,
-                "Unable to set cookies",
-            ))
-        }
-    } else {
+    if let Ok(Some(_)) = session.get().await {
         Err(status::Custom(Status::Unauthorized, "Not authorized"))
+    } else {
+        let userr = form.into_inner();
+        let passw = decrypt_rsa(userr.password, state);
+        let sale = generate_32_byte_random();
+        let connection = &mut rocket_chat::establish_connection();
+
+        let result = diesel::insert_into(users)
+            .values((
+                rocket_chat::schema::users::username.eq(userr.username.clone()),
+                rocket_chat::schema::users::passwd
+                    .eq(hash_password(format!("{}{}{}", passw, &sale, PEPPER))),
+                rocket_chat::schema::users::salt.eq(sale),
+            ))
+            .execute(connection);
+        let result2 = diesel::insert_into(rooms_users)
+            .values((
+                rocket_chat::schema::rooms_users::room_name.eq("lobby"),
+                rocket_chat::schema::rooms_users::user.eq(userr.username.clone()),
+            ))
+            .execute(connection);
+        if result == Ok(1) && result2 == Ok(1) {
+            if let Ok(_) = session.set(userr.username).await {
+                Ok("GRANTED")
+            } else {
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Unable to set cookies",
+                ))
+            }
+        } else {
+            Err(status::Custom(Status::Unauthorized, "Not authorized"))
+        }
     }
 }
 
