@@ -65,10 +65,14 @@ document.getElementById("login-form").addEventListener("submit", (e) => {
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("login-username").value;
+        const username = document.getElementById("login-username").value.trim();
         const password = encryptRsa(
             document.getElementById("login-password").value
         );
+
+        if (username == "") {
+            return;
+        }
 
         fetch("/login", {
             method: "POST",
@@ -103,10 +107,14 @@ document.getElementById("sign-up-button").addEventListener("click", (e) => {
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("login-username").value;
+        const username = document.getElementById("login-username").value.trim();
         const password = encryptRsa(
             document.getElementById("login-password").value
         );
+
+        if (username == "") {
+            return;
+        }
 
         fetch("/signup", {
             method: "POST",
