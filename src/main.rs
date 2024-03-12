@@ -584,16 +584,16 @@ fn generate_32_byte_random() -> String {
     }
 }
 
-#[get("/")]
+#[get("/login")]
 async fn index_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
     if let Ok(Some(_)) = session.get().await {
         Err(Redirect::to(uri!(chat_page)))
     } else {
-        Ok(NamedFile::open("pages/index.html").await.ok())
+        Ok(NamedFile::open("pages/login.html").await.ok())
     }
 }
 
-#[get("/chat")]
+#[get("/")]
 async fn chat_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
     if let Ok(Some(_)) = session.get().await {
         Ok(NamedFile::open("pages/chat.html").await.ok())
