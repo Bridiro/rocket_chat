@@ -89,7 +89,7 @@ document.getElementById("login-form").addEventListener("submit", (e) => {
             .then((data) => {
                 console.log(data);
                 if (data === "GRANTED") {
-                    window.location.href = "/chat";
+                    window.location.href = "/";
                 }
             })
             .catch((err) => {
@@ -127,7 +127,7 @@ document.getElementById("sign-up-button").addEventListener("click", (e) => {
             .then((data) => {
                 console.log(data);
                 if (data === "GRANTED") {
-                    window.location.href = "/chat";
+                    window.location.href = "/";
                 }
             })
             .catch((err) => {
