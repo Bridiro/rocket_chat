@@ -59,18 +59,64 @@ function encryptRsa(message) {
     }
 }
 
+function resetUserError() {
+    document.getElementById("username").classList.remove("errorField");
+    let usernameLabel = document.querySelector('label[for="username"]');
+    usernameLabel.classList.remove("errorLabel");
+    usernameLabel.innerText = "Username";
+}
+
+function userError() {
+    document.getElementById("username").classList.add("errorField");
+    let usernameLabel = document.querySelector('label[for="username"]');
+    usernameLabel.classList.add("errorLabel");
+    usernameLabel.innerText += " | empty field!";
+}
+
+function resetPassError() {
+    document.getElementById("password").classList.remove("errorField");
+    let usernameLabel = document.querySelector('label[for="password"]');
+    usernameLabel.classList.remove("errorLabel");
+    usernameLabel.innerText = "Password";
+}
+
+function passError() {
+    document.getElementById("password").classList.add("errorField");
+    let passwordLabel = document.querySelector('label[for="password"]');
+    passwordLabel.classList.add("errorLabel");
+    passwordLabel.innerText += " | empty field!";
+}
+
+document.getElementById("username").addEventListener("input", () => {
+    resetUserError();
+});
+
+document.getElementById("password").addEventListener("input", () => {
+    resetPassError();
+});
+
 // Set up handler for the login form
 document.querySelector("form").addEventListener("submit", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("username").value.trim();
-        const password = encryptRsa(document.getElementById("password").value);
+        const userField = document.getElementById("username");
+        const passField = document.getElementById("password");
 
-        if (username == "") {
+        if (userField.value.trim() == "") {
+            userError();
+        }
+        if (passField.value.trim() == "") {
+            passError();
+        }
+
+        if (userField.value.trim() == "" || passField.value.trim() == "") {
             return;
         }
+
+        const username = userField.value.trim();
+        const password = encryptRsa(passField.value);
 
         fetch("/login", {
             method: "POST",
@@ -96,6 +142,16 @@ document.querySelector("form").addEventListener("submit", (e) => {
             })
             .catch((err) => {
                 console.error(err);
+                userField.classList.add("errorField");
+                passField.classList.add("errorField");
+                let usernameLabel = document.querySelector(
+                    'label[for="username"]'
+                );
+                usernameLabel.classList.add("errorLabel");
+                usernameLabel.innerText += " | invalid user or password";
+                document
+                    .querySelector('label[for="password"]')
+                    .classList.add("errorLabel");
             });
     }
 });
@@ -105,12 +161,22 @@ document.getElementById("signup-button").addEventListener("click", (e) => {
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("username").value.trim();
-        const password = encryptRsa(document.getElementById("password").value);
+        const userField = document.getElementById("username");
+        const passField = document.getElementById("password");
 
-        if (username == "") {
+        if (userField.value.trim() == "") {
+            userError();
+        }
+        if (passField.value.trim() == "") {
+            passError();
+        }
+
+        if (userField.value.trim() == "" || passField.value.trim() == "") {
             return;
         }
+
+        const username = userField.value.trim();
+        const password = encryptRsa(passField.value);
 
         fetch("/signup", {
             method: "POST",
@@ -136,6 +202,16 @@ document.getElementById("signup-button").addEventListener("click", (e) => {
             })
             .catch((err) => {
                 console.error(err);
+                userField.classList.add("errorField");
+                passField.classList.add("errorField");
+                let usernameLabel = document.querySelector(
+                    'label[for="username"]'
+                );
+                usernameLabel.classList.add("errorLabel");
+                usernameLabel.innerText += " | can't create user";
+                document
+                    .querySelector('label[for="password"]')
+                    .classList.add("errorLabel");
             });
     }
 });

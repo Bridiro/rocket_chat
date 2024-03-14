@@ -14,72 +14,33 @@ body {
 }
 
 @media only screen and (max-width: 600px) {
-    .background {
-        width: 90%;
-        height: 75%;
-    }
-
     form {
         width: 90%;
-        height: 75%;
     }
 }
 
 @media only screen and (min-width: 600px) {
-    .background {
-        width: 85%;
-        height: 75%;
-    }
-
     form {
         width: 85%;
-        height: 75%;
     }
 }
 
 @media only screen and (min-width: 768px) {
-    .background {
-        width: 35%;
-        height: 70%;
-    }
-
     form {
         width: 35%;
-        height: 70%;
     }
 }
 
-/* Large devices (laptops/desktops, 992px and up) */
 @media only screen and (min-width: 992px) {
-    .background {
-        width: 30%;
-        height: 55%;
-    }
-
     form {
         width: 30%;
-        height: 55%;
     }
 }
 
-/* Extra large devices (large laptops and desktops, 1200px and up) */
 @media only screen and (min-width: 1200px) {
-    .background {
-        width: 30%;
-        height: 55%;
-    }
-
     form {
-        width: 30%;
-        height: 55%;
+        width: 25%;
     }
-}
-
-.background {
-    position: absolute;
-    transform: translate(-50%, -50%);
-    left: 50%;
-    top: 50%;
 }
 
 form {
@@ -93,25 +54,6 @@ form {
     border: 2px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     padding: 50px 35px;
-}
-
-.background .shape {
-    height: 200px;
-    width: 200px;
-    position: absolute;
-    border-radius: 50%;
-}
-
-.shape:first-child {
-    background: linear-gradient(#ff512f, #f09819);
-    left: -80px;
-    top: -80px;
-}
-
-.shape:last-child {
-    background: linear-gradient(to right, #ff512f, #f09819);
-    right: -30px;
-    bottom: -80px;
 }
 
 #login-button {
@@ -175,4 +117,13 @@ form h3 {
 
 ::placeholder {
     color: #e5e5e5;
+}
+
+.errorField {
+    border: 1px solid red;
+    color: red;
+}
+
+.errorLabel {
+    color: red;
 }
