@@ -60,15 +60,13 @@ function encryptRsa(message) {
 }
 
 // Set up handler for the login form
-document.getElementById("login-form").addEventListener("submit", (e) => {
+document.querySelector("form").addEventListener("submit", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("login-username").value.trim();
-        const password = encryptRsa(
-            document.getElementById("login-password").value
-        );
+        const username = document.getElementById("username").value.trim();
+        const password = encryptRsa(document.getElementById("password").value);
 
         if (username == "") {
             return;
@@ -102,15 +100,13 @@ document.getElementById("login-form").addEventListener("submit", (e) => {
     }
 });
 
-document.getElementById("sign-up-button").addEventListener("click", (e) => {
+document.getElementById("signup-button").addEventListener("click", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
         getPubKey();
-        const username = document.getElementById("login-username").value.trim();
-        const password = encryptRsa(
-            document.getElementById("login-password").value
-        );
+        const username = document.getElementById("username").value.trim();
+        const password = encryptRsa(document.getElementById("password").value);
 
         if (username == "") {
             return;
