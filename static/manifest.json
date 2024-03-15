@@ -1,0 +1,13 @@
+{
+    "name": "Rust Rocket Chat",
+    "short_name": "Rocket Chat",
+    "start_url": "/",
+    "display": "standalone",
+    "icons": [
+        {
+            "src": "/rust-logo-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

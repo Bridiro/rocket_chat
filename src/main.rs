@@ -481,7 +481,6 @@ async fn signup(
     state: &State<AppState>,
     session: Session<'_, String>,
 ) -> Result<&'static str, status::Custom<&'static str>> {
-    use rocket_chat::schema::rooms_users::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
     if let Ok(Some(_)) = session.get().await {
@@ -492,21 +491,15 @@ async fn signup(
         let sale = generate_32_byte_random();
         let connection = &mut rocket_chat::establish_connection();
 
-        let result = diesel::insert_into(users)
+        if let Ok(1) = diesel::insert_into(users)
             .values((
                 rocket_chat::schema::users::username.eq(userr.username.clone()),
                 rocket_chat::schema::users::passwd
                     .eq(hash_password(format!("{}{}{}", passw, &sale, PEPPER))),
                 rocket_chat::schema::users::salt.eq(sale),
             ))
-            .execute(connection);
-        let result2 = diesel::insert_into(rooms_users)
-            .values((
-                rocket_chat::schema::rooms_users::room_name.eq("lobby"),
-                rocket_chat::schema::rooms_users::user.eq(userr.username.clone()),
-            ))
-            .execute(connection);
-        if result == Ok(1) && result2 == Ok(1) {
+            .execute(connection)
+        {
             if let Ok(_) = session.set(userr.username).await {
                 Ok("GRANTED")
             } else {
@@ -518,6 +511,15 @@ async fn signup(
         } else {
             Err(status::Custom(Status::Unauthorized, "Not authorized"))
         }
+    }
+}
+
+#[get("/logout")]
+async fn logout(session: Session<'_, String>) -> Redirect {
+    if let Ok(_) = session.remove().await {
+        Redirect::to(uri!(login_page))
+    } else {
+        Redirect::to(uri!(chat_page))
     }
 }
 
@@ -621,7 +623,7 @@ fn generate_32_byte_random() -> String {
 }
 
 #[get("/login")]
-async fn index_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
+async fn login_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Redirect> {
     if let Ok(Some(_)) = session.get().await {
         Err(Redirect::to(uri!(chat_page)))
     } else {
@@ -634,7 +636,7 @@ async fn chat_page(session: Session<'_, String>) -> Result<Option<NamedFile>, Re
     if let Ok(Some(_)) = session.get().await {
         Ok(NamedFile::open("pages/chat.html").await.ok())
     } else {
-        Err(Redirect::to(uri!(index_page)))
+        Err(Redirect::to(uri!(login_page)))
     }
 }
 
@@ -657,7 +659,7 @@ fn rocket() -> _ {
         .mount(
             "/",
             routes![
-                index_page,
+                login_page,
                 chat_page,
                 get_user,
                 post,
@@ -667,9 +669,10 @@ fn rocket() -> _ {
                 get_rooms,
                 login,
                 signup,
+                logout,
                 get_rsa_pub_key,
                 events
             ],
         )
-        .mount("/static", FileServer::from(relative!("static")))
+        .mount("/", FileServer::from(relative!("static")))
 }
