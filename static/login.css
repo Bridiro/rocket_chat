@@ -1,149 +1,129 @@
-:root {
-    --bg-dark: #242423;
-    --bg-light: #666866;
-    --bg-form-light: #333533;
-    --fg-light: #e8eddf;
-    --callout: rgb(255, 255, 102);
-    --callout-dark: #101010;
+*,
+*:before,
+*:after {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
 }
 
-* {
-    font-size: 18px;
-}
-
-html,
-body,
-main {
-    background-color: var(--bg-dark);
-    color: #fff;
-    font-family: "Inter", Arial, Helvetica, sans-serif, "Noto Color Emoji";
-    font-weight: 400;
-    text-shadow: rgb(77, 81, 86) 0px 0px 0px;
+body {
+    background-color: #080710;
+    width: 100%;
     height: 100%;
-}
-
-main {
-    display: flex;
-}
-
-button:hover:not(.active) {
-    filter: brightness(1.15);
-    cursor: pointer;
-}
-
-form {
-    display: flex;
-    border-top: 2px solid #242424;
-}
-
-form input {
-    height: 40px;
-    background: var(--fg-light);
-    color: var(--bg-dark);
-}
-
-input {
-    padding: 0 10px;
-    border-radius: 10px;
-}
-
-input:focus {
-    outline: 0;
-    filter: brightness(1.05);
-}
-
-input#username {
-    text-align: right;
-    flex: 1 25%;
-    width: 25%;
-    border-right: 1px solid #303030;
-}
-
-form button {
-    padding: 0 10px;
+    overflow: hidden;
 }
 
 @media only screen and (max-width: 600px) {
-    #login {
-        width: 85%;
-        height: 55%;
-    }
-
-    #login-form {
-        width: 80%;
+    form {
+        width: 90%;
     }
 }
 
 @media only screen and (min-width: 600px) {
-    #login {
+    form {
         width: 85%;
-        height: 55%;
-    }
-
-    #login-form {
-        width: 75%;
     }
 }
 
 @media only screen and (min-width: 768px) {
-    #login {
-        width: 70%;
-        height: 55%;
-    }
-
-    #login-form {
-        width: 60%;
+    form {
+        width: 35%;
     }
 }
 
 @media only screen and (min-width: 992px) {
-    #login {
-        width: 55%;
-        height: 50%;
-    }
-
-    #login-form {
-        width: 60%;
+    form {
+        width: 30%;
     }
 }
 
 @media only screen and (min-width: 1200px) {
-    #login {
-        width: 35%;
-        height: 50%;
-    }
-
-    #login-form {
-        width: 50%;
+    form {
+        width: 25%;
     }
 }
 
-#login {
+form {
+    background-color: rgba(255, 255, 255, 0.13);
     position: absolute;
+    transform: translate(-50%, -50%);
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: var(--bg-form-light);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
+    padding: 50px 35px;
 }
 
-#login h1 {
+#login-button {
+    margin-top: 40px;
+    width: 100%;
+    background-color: #ffffff;
+    color: #080710;
+    padding: 15px 0;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#signup-button {
+    margin-top: 10;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0);
+    color: #ffffff;
+    padding: 15px 0;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+label {
+    display: block;
+    margin-top: 30px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+#username,
+#password {
+    display: block;
+    height: 50px;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.07);
+    border-radius: 3px;
+    padding: 0 10px;
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 300;
+}
+
+form * {
+    font-family: "Poppins", sans-serif;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    outline: none;
+    border: none;
+}
+
+form h3 {
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 42px;
     text-align: center;
-    font-size: 2em;
-    margin-bottom: 10px;
 }
 
-#login-form {
-    margin-left: auto;
-    margin-right: auto;
-    display: flex;
-    flex-direction: column;
+::placeholder {
+    color: #e5e5e5;
 }
 
-#login-form input {
-    margin-bottom: 20px;
+.errorField {
+    border: 1px solid red;
+    color: red;
+}
+
+.errorLabel {
+    color: red;
 }

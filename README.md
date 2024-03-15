@@ -13,17 +13,36 @@ One important thing to remember is that you have to implement this **trigger** i
 
     DELIMITER //
 
-    CREATE OR REPLACE TRIGGER trigger_delete_empty_rooms
-    AFTER DELETE ON rooms_users
+    CREATE TRIGGER trigger_delete_empty_rooms AFTER DELETE ON rooms_users
     FOR EACH ROW
     BEGIN
         DECLARE count_users INT;
-        SELECT COUNT(*) INTO count_users FROM rooms_users WHERE room_name = OLD.room_name;
 
-        IF count_users = 0 THEN
-            DELETE FROM rooms WHERE room_name = OLD.room_name;
+        IF OLD.room_name != 'lobby' THEN
+            SELECT COUNT(*) INTO count_users FROM rooms_users WHERE room_name = OLD.room_name;
+
+            IF count_users = 0 THEN
+                DELETE FROM rooms WHERE room_name = OLD.room_name;
+            END IF;
         END IF;
-    END//
+    END;
+
+    //
+
+    DELIMITER ;
+
+and
+
+    DELIMITER //
+
+    CREATE TRIGGER after_insert_users_trigger
+    AFTER INSERT ON users
+    FOR EACH ROW
+    BEGIN
+        INSERT INTO rooms_users (room_name, user)
+        VALUES ('lobby', NEW.username);
+    END;
+    //
 
     DELIMITER ;
 
