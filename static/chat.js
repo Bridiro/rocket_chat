@@ -570,11 +570,19 @@ function init() {
     document.addEventListener("click", (event) => {
         let sidebar = document.getElementById("sidebar");
         let toggleSidebarButton = document.getElementById("toggle-menu");
-        if (
-            !sidebar.contains(event.target) &&
-            !toggleSidebarButton.contains(event.target)
-        ) {
-            sidebar.style.display = "none";
+        if (window.matchMedia("(max-width: 992px)").matches) {
+            if (
+                !sidebar.contains(event.target) &&
+                !toggleSidebarButton.contains(event.target)
+            ) {
+                sidebar.style.display = "none";
+            }
+        }
+    });
+
+    window.addEventListener("resize", () => {
+        if (window.innerWidth > 992) {
+            document.getElementById("sidebar").style.display = "flex";
         }
     });
 
