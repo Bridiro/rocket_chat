@@ -563,6 +563,21 @@ function init() {
         }
     });
 
+    document.getElementById("toggle-menu").addEventListener("click", () => {
+        document.getElementById("sidebar").style.display = "flex";
+    });
+
+    document.addEventListener("click", (event) => {
+        let sidebar = document.getElementById("sidebar");
+        let toggleSidebarButton = document.getElementById("toggle-menu");
+        if (
+            !sidebar.contains(event.target) &&
+            !toggleSidebarButton.contains(event.target)
+        ) {
+            sidebar.style.display = "none";
+        }
+    });
+
     // Subscribe to server-sent events.
     subscribe("/events");
 }

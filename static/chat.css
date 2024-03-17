@@ -20,6 +20,24 @@ main {
 }
 
 @media only screen and (max-width: 600px) {
+    #top-bar {
+        display: block;
+    }
+
+    #sidebar {
+        display: none;
+        position: absolute;
+        width: 90%;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 999;
+    }
+
+    #content {
+        flex: 1;
+    }
+
     #add-room {
         width: 90%;
     }
@@ -30,6 +48,24 @@ main {
 }
 
 @media only screen and (min-width: 600px) {
+    #top-bar {
+        display: block;
+    }
+
+    #sidebar {
+        display: none;
+        position: absolute;
+        width: 70%;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 999;
+    }
+
+    #content {
+        flex: 1;
+    }
+
     #add-room {
         width: 85%;
     }
@@ -40,6 +76,24 @@ main {
 }
 
 @media only screen and (min-width: 768px) {
+    #top-bar {
+        display: block;
+    }
+
+    #sidebar {
+        display: none;
+        position: absolute;
+        width: 60%;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 999;
+    }
+
+    #content {
+        flex: 1;
+    }
+
     #add-room {
         width: 35%;
     }
@@ -50,6 +104,20 @@ main {
 }
 
 @media only screen and (min-width: 992px) {
+    #top-bar {
+        display: none;
+    }
+
+    #sidebar {
+        position: static;
+        display: flex;
+        flex: 3 30%;
+    }
+
+    #content {
+        flex: 7 100%;
+    }
+
     #add-room {
         width: 40%;
     }
@@ -60,6 +128,20 @@ main {
 }
 
 @media only screen and (min-width: 1200px) {
+    #top-bar {
+        display: none;
+    }
+
+    #sidebar {
+        position: static;
+        display: flex;
+        flex: 3 30%;
+    }
+
+    #content {
+        flex: 7 100%;
+    }
+
     #add-room {
         width: 35%;
     }
@@ -70,8 +152,6 @@ main {
 }
 
 #sidebar {
-    flex: 3 30%;
-    display: flex;
     flex-direction: column;
     overflow: auto;
     background-color: rgba(255, 255, 255, 0.13);
@@ -81,6 +161,7 @@ main {
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     padding: 4px;
     margin: 5px;
+    z-index: 999;
 }
 
 #status {
@@ -221,10 +302,32 @@ main {
 }
 
 #content {
-    flex: 7 100%;
     overflow: auto;
     display: flex;
     flex-direction: column;
+    position: relative;
+}
+
+#top-bar {
+    top: 13px;
+    left: 8px;
+    position: absolute;
+    width: calc(100% - 16px);
+    height: 50px;
+    padding: 4px 8px;
+    background-color: rgba(255, 255, 255, 0.13);
+    color: #ffffff;
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
+    box-sizing: border-box;
+    z-index: 2;
+}
+
+#toggle-menu {
+    height: 100%;
+    width: auto;
 }
 
 #messages {
@@ -232,12 +335,18 @@ main {
     display: flex;
     flex-direction: column;
     flex: 1;
-    overflow-y: scroll;
+    overflow-y: auto;
+    bottom: 0;
+    top: 0;
 }
 
 .container-message {
     width: 100%;
     margin-bottom: 7px;
+}
+
+.container-message:last-child {
+    margin-bottom: 70px;
 }
 
 .message {
@@ -259,10 +368,6 @@ main {
     justify-content: flex-end;
 }
 
-.message:last-child {
-    margin-bottom: 0;
-}
-
 .message .username {
     font-weight: bold;
     padding-bottom: 5px;
@@ -277,9 +382,9 @@ main {
 
 #new-message {
     bottom: 0;
+    left: 0;
     padding: 4px 8px 13px 8px;
-    position: sticky;
-    flex: 0 0 auto;
+    position: absolute;
     width: 100%;
     display: flex;
 }
