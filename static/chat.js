@@ -8,7 +8,7 @@ var STATE = {
 // Generate a color from a "hash" of a string. Thanks, internet.
 function hashColor(str) {
     let hash = 0;
-    for (var i = 0; i < str.length; i++) {
+    for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
         hash = hash & hash;
     }
@@ -25,18 +25,30 @@ function addRoom(name, key) {
     }
 
     let roomListDiv = document.getElementById("room-list");
-    var node = document.getElementById("room").content.cloneNode(true);
-    var room = node.querySelector(".room");
-    var button = node.querySelector(".remove-room");
+    let node = document.getElementById("room").content.cloneNode(true);
+    let room = node.querySelector(".room");
+    let button = node.querySelector(".remove-room");
     room.addEventListener("click", () => changeRoom(name));
-    button.addEventListener("click", () => removeRoom(name));
-    room.textContent = name;
+    button.addEventListener("click", () => confirmRemoveRoom(name));
+    room.value = name;
     room.dataset.name = name;
     roomListDiv.appendChild(node);
 
     STATE.rooms[name] = { key: key, messages: [] };
     changeRoom(name);
     return true;
+}
+
+function confirmRemoveRoom(room) {
+    let popup = document.getElementById("confirm-remove");
+    popup.querySelector("#room-name-remove").innerText = room;
+    popup.style.display = "block";
+}
+
+function closeConfirmRemoveRoom() {
+    let popup = document.getElementById("confirm-remove");
+    popup.querySelector("#room-name-remove").innerText = "";
+    popup.style.display = "none";
 }
 
 // Remove the room `name` and change to the first room available. Return `true`
@@ -64,14 +76,14 @@ function removeRoom(name) {
                 if (response.ok) {
                     let rooms = roomListDiv.querySelectorAll(".room");
                     if (
-                        rooms[0].innerHTML == name &&
+                        rooms[0].value == name &&
                         STATE.room == name &&
                         rooms.length > 1
                     )
-                        changeRoom(rooms[1].innerHTML);
-                    else if (STATE.room == name) changeRoom(rooms[0].innerHTML);
+                        changeRoom(rooms[1].value);
+                    else if (STATE.room == name) changeRoom(rooms[0].value);
 
-                    var node = roomListDiv.querySelector(
+                    let node = roomListDiv.querySelector(
                         `.room[data-name='${name}']`
                     ).parentElement;
                     roomListDiv.removeChild(node);
@@ -101,27 +113,24 @@ function changeRoom(name) {
             .querySelector(`.room[data-name='${name}`)
             .classList.add("active");
     } else {
-        var newRoom = roomListDiv.querySelector(`.room[data-name='${name}']`);
-        var parentNewRoom = newRoom.parentElement;
-        var newRoomRemove = parentNewRoom.querySelector(".remove-room");
-        var oldRoom = roomListDiv.querySelector(
+        let newRoom = roomListDiv.querySelector(`.room[data-name='${name}']`);
+        let parentNewRoom = newRoom.parentElement;
+        let newRoomRemove = parentNewRoom.querySelector(".remove-room");
+        let oldRoom = roomListDiv.querySelector(
             `.room[data-name='${STATE.room}']`
         );
-        var parentOldRoom = oldRoom.parentElement;
-        var oldRoomRemove = parentOldRoom.querySelector(".remove-room");
+        let parentOldRoom = oldRoom.parentElement;
+        let oldRoomRemove = parentOldRoom.querySelector(".remove-room");
         if (!newRoom || !oldRoom) return;
 
         oldRoom.classList.remove("active");
         newRoom.classList.add("active");
         oldRoomRemove.classList.remove("active");
         newRoomRemove.classList.add("active");
-
-        oldRoomRemove.style.display = "none";
-        newRoomRemove.style.display = "inline";
     }
 
     STATE.room = name;
-    messagesDiv.querySelectorAll(".message").forEach((msg) => {
+    messagesDiv.querySelectorAll(".container-message").forEach((msg) => {
         messagesDiv.removeChild(msg);
     });
 
@@ -143,14 +152,23 @@ function addMessage(room, username, message, push = false) {
         node.querySelector(".message .username").style.color =
             hashColor(username);
         node.querySelector(".message .text").textContent = message;
+        if (username == STATE.user) {
+            node.querySelector(".container-message").classList.add("minemess");
+        }
         document.getElementById("messages").appendChild(node);
+        setTimeout(scrollToBottom, 100);
     }
+}
+
+function scrollToBottom() {
+    let chatContainer = document.getElementById("messages");
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
 // Subscribe to the event source at `uri` with exponential backoff reconnect.
 function subscribe(uri) {
-    var retryTime = 1;
-    var done = false;
+    let retryTime = 1;
+    let done = false;
 
     function connect(uri) {
         const events = new EventSource(uri);
@@ -204,17 +222,13 @@ function setConnectedStatus(status) {
 }
 
 // Open popup
-function openPopup() {
-    document.getElementById("popup").style.display = "block";
+function openRoomForm() {
+    document.getElementById("add-room").style.display = "block";
 }
 
 // Close popup
-function closePopup() {
-    document.getElementById("popup").style.display = "none";
-}
-
-// Clean the popup fields
-function cleanPopup() {
+function closeRoomForm() {
+    document.getElementById("add-room").style.display = "none";
     document.getElementById("new-room-password").disabled = true;
     document.getElementById("check-password").checked = false;
     document.getElementById("check-password").disabled = false;
@@ -413,7 +427,7 @@ function init() {
                     });
             }
 
-            openPopup();
+            openRoomForm();
         });
 
     // Set up the add room handler
@@ -475,8 +489,7 @@ function init() {
                             true
                         );
                     });
-                    cleanPopup();
-                    closePopup();
+                    closeRoomForm();
                 })
                 .catch((err) => {
                     console.error(err);
@@ -485,11 +498,26 @@ function init() {
     });
 
     // Set up the close popup handler
-    document.getElementById("add-cancel").addEventListener("click", (e) => {
-        e.preventDefault();
-        cleanPopup();
-        closePopup();
+    document.getElementById("add-cancel").addEventListener("click", () => {
+        closeRoomForm();
     });
+
+    // Set up confirm remove room
+    document
+        .getElementById("confirm-remove")
+        .addEventListener("submit", (e) => {
+            e.preventDefault();
+            let room = document.getElementById("room-name-remove").innerText;
+            removeRoom(room);
+            closeConfirmRemoveRoom();
+        });
+
+    // Set up cancel remove room
+    document
+        .getElementById("cancel-remove-button")
+        .addEventListener("click", () => {
+            closeConfirmRemoveRoom();
+        });
 
     // Set up handler to able or disable password input from list
     document.getElementById("new-room-name").addEventListener("input", (e) => {

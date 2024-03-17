@@ -2,10 +2,15 @@
 <html>
     <head>
         <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Rocket Chat</title>
         <link rel="stylesheet" href="reset.css" />
         <link rel="stylesheet" href="chat.css" />
         <link rel="manifest" href="manifest.json" />
+        <script
+            src="https://kit.fontawesome.com/dd540d08de.js"
+            crossorigin="anonymous"
+        ></script>
         <script
             src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"
             integrity="sha512-95iy0RZIbw3H/FgfAj2wnCQJlzFQ+eaSfUeV/l8WVyGHKSRMzm3M/O+85j9ba/HFphkijrCTDjcuDX0BL2lthA=="
@@ -22,31 +27,44 @@
     </head>
     <body>
         <main>
-            <div id="popup">
-                <form id="add-room">
-                    <input
-                        type="text"
-                        name="name"
-                        id="new-room-name"
-                        list="rooms-list"
-                        autocomplete="off"
-                        placeholder="new room..."
-                        maxlength="29"
-                    />
-                    <datalist id="rooms-list"></datalist>
-                    <input
-                        type="password"
-                        name="password"
-                        id="new-room-password"
-                        autocomplete="off"
-                        placeholder="password"
-                        disabled
-                    />
-                    <input type="checkbox" id="check-password" />
-                    <input type="submit" id="add-button" value="Add" />
-                    <input type="button" id="add-cancel" value="Cancel" />
-                </form>
-            </div>
+            <form id="add-room">
+                <h3>Add room</h3>
+                <label for="new-room-name">Room name</label>
+                <input
+                    type="text"
+                    name="name"
+                    id="new-room-name"
+                    list="rooms-list"
+                    autocomplete="off"
+                    placeholder="Room name"
+                    maxlength="29"
+                />
+                <datalist id="rooms-list"></datalist>
+                <label for="new-room-password">Password</label>
+                <input
+                    type="password"
+                    name="password"
+                    id="new-room-password"
+                    autocomplete="off"
+                    placeholder="Password"
+                    disabled
+                />
+                <input type="checkbox" id="check-password" />
+                <input type="submit" id="add-button" value="Add" />
+                <input type="button" id="add-cancel" value="Cancel" />
+            </form>
+
+            <form id="confirm-remove">
+                <h3>Remove room:</h3>
+                <br />
+                <h3 id="room-name-remove"></h3>
+                <input
+                    type="submit"
+                    id="confirm-remove-button"
+                    value="Confirm"
+                />
+                <input type="button" id="cancel-remove-button" value="Cancel" />
+            </form>
 
             <div id="sidebar">
                 <div id="status" class="pending"></div>
@@ -54,23 +72,27 @@
                 <div id="room-list">
                     <template id="room">
                         <div class="side-room">
-                            <button class="room"></button>
-                            <button class="remove-room">-</button>
+                            <input type="button" class="room" />
+                            <input
+                                type="button"
+                                class="remove-room"
+                                value="-"
+                            />
                         </div>
                     </template>
                 </div>
 
-                <form id="new-room">
-                    <button type="button" id="new-room-button">+</button>
-                </form>
+                <input type="button" id="new-room-button" value="+" />
             </div>
 
             <div id="content">
                 <div id="messages">
                     <template id="message">
-                        <div class="message">
-                            <span class="username"></span>
-                            <span class="text"></span>
+                        <div class="container-message">
+                            <div class="message">
+                                <span class="username"></span>
+                                <span class="text"></span>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -84,7 +106,7 @@
                         placeholder="Send a message..."
                         autofocus
                     />
-                    <button type="submit" id="send">Send</button>
+                    <input type="submit" id="send" value=">" />
                 </form>
             </div>
         </main>
