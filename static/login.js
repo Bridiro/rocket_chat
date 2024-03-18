@@ -70,7 +70,7 @@ function userError() {
     document.getElementById("username").classList.add("errorField");
     let usernameLabel = document.querySelector('label[for="username"]');
     usernameLabel.classList.add("errorLabel");
-    usernameLabel.innerText += " | empty field!";
+    usernameLabel.innerText = "Username | empty field!";
 }
 
 function resetPassError() {
@@ -84,14 +84,16 @@ function passError() {
     document.getElementById("password").classList.add("errorField");
     let passwordLabel = document.querySelector('label[for="password"]');
     passwordLabel.classList.add("errorLabel");
-    passwordLabel.innerText += " | empty field!";
+    passwordLabel.innerText = "Password | empty field!";
 }
 
 document.getElementById("username").addEventListener("input", () => {
     resetUserError();
+    resetPassError();
 });
 
 document.getElementById("password").addEventListener("input", () => {
+    resetUserError();
     resetPassError();
 });
 
@@ -148,7 +150,7 @@ document.querySelector("form").addEventListener("submit", (e) => {
                     'label[for="username"]'
                 );
                 usernameLabel.classList.add("errorLabel");
-                usernameLabel.innerText += " | invalid user or password";
+                usernameLabel.innerText = "Username | invalid user or password";
                 document
                     .querySelector('label[for="password"]')
                     .classList.add("errorLabel");
@@ -208,7 +210,7 @@ document.getElementById("signup-button").addEventListener("click", (e) => {
                     'label[for="username"]'
                 );
                 usernameLabel.classList.add("errorLabel");
-                usernameLabel.innerText += " | can't create user";
+                usernameLabel.innerText = "Username | can't create user";
                 document
                     .querySelector('label[for="password"]')
                     .classList.add("errorLabel");
