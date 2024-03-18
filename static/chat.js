@@ -570,10 +570,14 @@ function init() {
     document.addEventListener("click", (event) => {
         let sidebar = document.getElementById("sidebar");
         let toggleSidebarButton = document.getElementById("toggle-menu");
+        let addRoomForm = document.getElementById("add-room");
+        let confirmRemoveForm = document.getElementById("confirm-remove");
         if (window.matchMedia("(max-width: 992px)").matches) {
             if (
                 !sidebar.contains(event.target) &&
-                !toggleSidebarButton.contains(event.target)
+                !toggleSidebarButton.contains(event.target) &&
+                !addRoomForm.contains(event.target) &&
+                !confirmRemoveForm.contains(event.target)
             ) {
                 sidebar.style.display = "none";
             }
@@ -583,6 +587,8 @@ function init() {
     window.addEventListener("resize", () => {
         if (window.innerWidth > 992) {
             document.getElementById("sidebar").style.display = "flex";
+        } else {
+            document.getElementById("sidebar").style.display = "none";
         }
     });
 

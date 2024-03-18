@@ -45,6 +45,10 @@ main {
     .message {
         max-width: 90%;
     }
+
+    #messages > div:first-of-type {
+        margin-top: 70px;
+    }
 }
 
 @media only screen and (min-width: 600px) {
@@ -72,6 +76,10 @@ main {
 
     .message {
         max-width: 85%;
+    }
+
+    #messages > div:first-of-type {
+        margin-top: 70px;
     }
 }
 
@@ -101,6 +109,10 @@ main {
     .message {
         max-width: 50%;
     }
+
+    #messages > div:first-of-type {
+        margin-top: 70px;
+    }
 }
 
 @media only screen and (min-width: 992px) {
@@ -124,6 +136,10 @@ main {
 
     .message {
         max-width: 45%;
+    }
+
+    #messages > div:first-of-type {
+        margin-top: 0;
     }
 }
 
@@ -149,6 +165,10 @@ main {
     .message {
         max-width: 40%;
     }
+
+    #messages > div:first-of-type {
+        margin-top: 0;
+    }
 }
 
 #sidebar {
@@ -157,6 +177,7 @@ main {
     background-color: rgba(255, 255, 255, 0.13);
     border-radius: 10px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 2px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     padding: 4px;
@@ -255,6 +276,7 @@ main {
     left: 50%;
     border-radius: 10px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 2px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     padding: 50px 35px;
@@ -319,6 +341,7 @@ main {
     color: #ffffff;
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     box-sizing: border-box;
@@ -358,6 +381,7 @@ main {
     background-color: rgba(255, 255, 255, 0.13);
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     word-wrap: break-word;
@@ -397,6 +421,7 @@ main {
     color: #ffffff;
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
 }
@@ -409,6 +434,7 @@ main {
     text-align: center;
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
 }
@@ -434,6 +460,7 @@ main {
     left: 50%;
     border-radius: 10px;
     backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 2px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     padding: 50px 35px;
@@ -489,9 +516,4 @@ form h3 {
 
 ::placeholder {
     color: #e5e5e5;
-}
-
-#add-room input:focus,
-#add-room button:hover {
-    filter: brightness(1.2);
 }
