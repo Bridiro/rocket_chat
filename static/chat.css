@@ -20,10 +20,6 @@ main {
 }
 
 @media only screen and (max-width: 600px) {
-    #top-bar {
-        display: block;
-    }
-
     #sidebar {
         display: none;
         position: absolute;
@@ -38,24 +34,17 @@ main {
         flex: 1;
     }
 
-    #add-room {
+    #add-room,
+    #user-form {
         width: 90%;
     }
 
     .message {
         max-width: 90%;
     }
-
-    #messages > div:first-of-type {
-        margin-top: 70px;
-    }
 }
 
 @media only screen and (min-width: 600px) {
-    #top-bar {
-        display: block;
-    }
-
     #sidebar {
         display: none;
         position: absolute;
@@ -70,24 +59,17 @@ main {
         flex: 1;
     }
 
-    #add-room {
+    #add-room,
+    #user-form {
         width: 85%;
     }
 
     .message {
         max-width: 85%;
     }
-
-    #messages > div:first-of-type {
-        margin-top: 70px;
-    }
 }
 
 @media only screen and (min-width: 768px) {
-    #top-bar {
-        display: block;
-    }
-
     #sidebar {
         display: none;
         position: absolute;
@@ -102,21 +84,18 @@ main {
         flex: 1;
     }
 
-    #add-room {
+    #add-room,
+    #user-form {
         width: 35%;
     }
 
     .message {
         max-width: 50%;
     }
-
-    #messages > div:first-of-type {
-        margin-top: 70px;
-    }
 }
 
 @media only screen and (min-width: 992px) {
-    #top-bar {
+    #toggle-menu {
         display: none;
     }
 
@@ -130,21 +109,18 @@ main {
         flex: 7 100%;
     }
 
-    #add-room {
+    #add-room,
+    #user-form {
         width: 40%;
     }
 
     .message {
         max-width: 45%;
     }
-
-    #messages > div:first-of-type {
-        margin-top: 0;
-    }
 }
 
 @media only screen and (min-width: 1200px) {
-    #top-bar {
+    #toggle-menu {
         display: none;
     }
 
@@ -158,16 +134,13 @@ main {
         flex: 7 100%;
     }
 
-    #add-room {
+    #add-room,
+    #user-form {
         width: 35%;
     }
 
     .message {
         max-width: 40%;
-    }
-
-    #messages > div:first-of-type {
-        margin-top: 0;
     }
 }
 
@@ -308,6 +281,68 @@ main {
     cursor: pointer;
 }
 
+#user-form {
+    background-color: rgba(255, 255, 255, 0.13);
+    position: absolute;
+    transform: translate(-50%, -50%);
+    top: 50%;
+    left: 50%;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
+    padding: 50px 35px;
+    z-index: 1000;
+    display: none;
+}
+
+#change-password {
+    margin-top: 40px;
+    width: 100%;
+    background-color: #ffffff;
+    color: #080710;
+    padding: 15px 0;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#cancel-password {
+    margin-top: 10;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0);
+    color: #ffffff;
+    padding: 15px 0;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#old-password,
+#new-password,
+#confirm-password {
+    display: block;
+    height: 50px;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.07);
+    border-radius: 3px;
+    padding: 0 10px;
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 300;
+}
+
+#logout {
+    right: 0;
+    color: red;
+    background-color: transparent;
+    border: 1px solid red;
+    border-radius: 3px;
+}
+
 #new-room-button {
     width: calc(100% - 8px);
     height: 50px;
@@ -346,11 +381,18 @@ main {
     box-shadow: 0 0 40px rgba(8, 7, 16, 0.6);
     box-sizing: border-box;
     z-index: 2;
+    display: flex;
+    justify-content: space-between;
 }
 
-#toggle-menu {
+#toggle-menu,
+#user-menu {
     height: 100%;
     width: auto;
+}
+
+#user-menu {
+    margin-left: auto;
 }
 
 #messages {
@@ -361,6 +403,16 @@ main {
     overflow-y: auto;
     bottom: 0;
     top: 0;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+#messages::-webkit-scrollbar {
+    display: none;
+}
+
+#messages > div:first-of-type {
+    margin-top: 70px;
 }
 
 .container-message {

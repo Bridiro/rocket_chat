@@ -99,6 +99,17 @@ impl Message {
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
+struct ChangePassword {
+    #[field(validate = structval(1, 20).or_else(msg!("user must be between 1 and 20 chars")))]
+    user: String,
+    #[field(validate = len(1..))]
+    old_password: String,
+    #[field(validate = len(1..))]
+    new_password: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
 struct Room {
     #[field(validate = structval(1, 30).or_else(msg!("room must be between 1 and 30 chars")))]
     room: String,
@@ -567,6 +578,48 @@ async fn signup(
     }
 }
 
+#[post("/change-pass", data = "<form>")]
+async fn change_password(
+    form: Form<ChangePassword>,
+    state: &State<AppState>,
+    session: Session<'_, String>,
+) -> Result<&'static str, status::Custom<&'static str>> {
+    use rocket_chat::schema::users::dsl::*;
+    let change = form.into_inner();
+    if let Ok(Some(user)) = session.get().await {
+        if user.clone() == change.user {
+            let old_password = decrypt_rsa(change.old_password, state);
+            let new_password = decrypt_rsa(change.new_password, state);
+            let connection = &mut rocket_chat::establish_connection();
+            if let Ok(results) = users
+                .limit(1)
+                .filter(username.eq(&user))
+                .select(UserDB::as_select())
+                .load(connection)
+            {
+                if results.len() > 0 {
+                    if let Ok(_) = diesel::update(users.filter(username.eq(user).and(passwd.eq(
+                        hash_password(format!("{}{}{}", old_password, results[0].salt, PEPPER)),
+                    ))))
+                    .set(passwd.eq(hash_password(format!(
+                        "{}{}{}",
+                        new_password, results[0].salt, PEPPER
+                    ))))
+                    .execute(connection)
+                    {
+                        return Ok("fatto");
+                    } else {
+                        return Err(status::Custom(Status::InternalServerError, "db error"));
+                    }
+                }
+            }
+            return Err(status::Custom(Status::Unauthorized, "used not there"));
+        }
+        return Err(status::Custom(Status::Unauthorized, "incongruent data"));
+    }
+    Err(status::Custom(Status::Unauthorized, "no session found"))
+}
+
 #[get("/logout")]
 async fn logout(session: Session<'_, String>) -> Redirect {
     if let Ok(_) = session.remove().await {
@@ -722,6 +775,7 @@ fn rocket() -> _ {
                 get_rooms,
                 login,
                 signup,
+                change_password,
                 logout,
                 get_rsa_pub_key,
                 events
