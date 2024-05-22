@@ -66,6 +66,40 @@
                 <input type="button" id="cancel-remove-button" value="Cancel" />
             </form>
 
+            <form id="user-form">
+                <h3>Change password</h3>
+                <label for="old-password">Old password</label>
+                <input
+                    type="password"
+                    name="old"
+                    id="old-password"
+                    autocomplete="off"
+                    placeholder="Old password"
+                    maxlength="30"
+                />
+                <label for="new-password">New password</label>
+                <input
+                    type="password"
+                    name="password"
+                    id="new-password"
+                    autocomplete="off"
+                    placeholder="New password"
+                    maxlength="30"
+                />
+                <label for="confirm-password">Confirm password</label>
+                <input
+                    type="password"
+                    name="confirm"
+                    id="confirm-password"
+                    autocomplete="off"
+                    placeholder="Confirm password"
+                    maxlength="30"
+                />
+                <input type="submit" id="change-password" value="Change" />
+                <input type="button" id="cancel-password" value="Cancel" />
+                <input type="button" id="logout" value="Logout" />
+            </form>
+
             <div id="sidebar">
                 <div id="status" class="pending"></div>
 
@@ -88,6 +122,7 @@
             <div id="content">
                 <div id="top-bar">
                     <img src="menu-image.png" id="toggle-menu" />
+                    <img src="usericon.png" id="user-menu" />
                 </div>
 
                 <div id="messages">

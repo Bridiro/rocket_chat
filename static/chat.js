@@ -567,6 +567,63 @@ function init() {
         document.getElementById("sidebar").style.display = "flex";
     });
 
+    document.getElementById("user-menu").addEventListener("click", () => {
+        document.getElementById("user-form").style.display = "block";
+    });
+
+    document.getElementById("cancel-password").addEventListener("click", () => {
+        document.getElementById("old-password").value = "";
+        document.getElementById("new-password").value = "";
+        document.getElementById("confirm-password").value = "";
+        document.getElementById("user-form").style.display = "none";
+    });
+
+    document.getElementById("logout").addEventListener("click", () => {
+        fetch("/logout", {
+            method: "GET",
+        });
+        location.href = "/login";
+    });
+
+    document.getElementById("user-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        let old_password_input = document.getElementById("old-password");
+        let new_password_input = document.getElementById("new-password");
+        let repeat_password_input = document.getElementById("confirm-password");
+
+        let user = STATE.user;
+        let old_password = old_password_input.value.trim();
+        let new_password = new_password_input.value.trim();
+        let repeat_password = repeat_password_input.value.trim();
+
+        if (
+            old_password == "" ||
+            new_password == "" ||
+            repeat_password == "" ||
+            new_password != repeat_password ||
+            old_password == new_password
+        ) {
+            return;
+        }
+
+        old_password = encryptRsa(old_password);
+        new_password = encryptRsa(new_password);
+
+        fetch("/change-pass", {
+            method: "POST",
+            body: new URLSearchParams({
+                user,
+                old_password,
+                new_password,
+            }),
+        }).then((response) => {
+            if (response.ok()) {
+                document.getElementById("user-form").style.display = "none";
+            }
+        });
+    });
+
     document.addEventListener("click", (event) => {
         let sidebar = document.getElementById("sidebar");
         let toggleSidebarButton = document.getElementById("toggle-menu");
