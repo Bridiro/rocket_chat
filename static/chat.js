@@ -618,8 +618,10 @@ function init() {
                 new_password,
             }),
         }).then((response) => {
-            if (response.ok()) {
+            if (response.ok) {
                 document.getElementById("user-form").style.display = "none";
+            } else {
+                alert("Errore nel modificare la password!");
             }
         });
     });
