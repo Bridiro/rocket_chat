@@ -28,7 +28,7 @@ use rsa::{
     Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
 };
 use sha2::{Digest, Sha512};
-use std::{error::Error, sync::Mutex, time::Duration};
+use std::{error::Error, path::PathBuf, sync::Mutex, time::Duration};
 
 const PEPPER: &str = "Zk4pGkvF9n5FPXSvrccl0XR33ach0+Vf/rliGZUUc+U=";
 
@@ -559,27 +559,31 @@ async fn login(
                 && hash_password(format!("{}{}{}", passw, result[0].salt, PEPPER))
                     == result[0].passwd
             {
-                if let Ok(admin) = AdminDB::belonging_to(&result[0])
-                    .select(AdminDB::as_select())
-                    .load(connection)
-                {
-                    if let Ok(_) = session
-                        .set((
-                            result[0].id,
-                            if admin.len() > 0 { 1 } else { 0 },
-                            userform.username,
-                        ))
-                        .await
+                if result[0].email_verified {
+                    if let Ok(admin) = AdminDB::belonging_to(&result[0])
+                        .select(AdminDB::as_select())
+                        .load(connection)
                     {
-                        Ok(Json(UserId { id: result[0].id }))
+                        if let Ok(_) = session
+                            .set((
+                                result[0].id,
+                                if admin.len() > 0 { 1 } else { 0 },
+                                userform.username,
+                            ))
+                            .await
+                        {
+                            Ok(Json(UserId { id: result[0].id }))
+                        } else {
+                            Err(status::Custom(
+                                Status::InternalServerError,
+                                "Unable to set cookies",
+                            ))
+                        }
                     } else {
-                        Err(status::Custom(
-                            Status::InternalServerError,
-                            "Unable to set cookies",
-                        ))
+                        Err(status::Custom(Status::Unauthorized, "Not authorized"))
                     }
                 } else {
-                    Err(status::Custom(Status::Unauthorized, "Not authorized"))
+                    Err(status::Custom(Status::Unauthorized, "Email not verified"))
                 }
             } else {
                 Err(status::Custom(Status::Unauthorized, "Not authorized"))
@@ -599,6 +603,7 @@ async fn signup(
     state: &State<AppState>,
     session: Session<'_, (i32, i32, String)>,
 ) -> Result<Json<UserId>, status::Custom<&'static str>> {
+    use rocket_chat::schema::email_tokens::dsl::*;
     use rocket_chat::schema::users::dsl::*;
 
     if let Ok(Some(_)) = session.get().await {
@@ -619,7 +624,12 @@ async fn signup(
                 surname.eq(surnamee.trim()),
                 username.eq(usernamee.trim()),
                 email.eq(emaill.trim()),
-                passwd.eq(hash_password(format!("{}{}{}", passw, &sale, PEPPER))),
+                passwd.eq(hash_password(format!(
+                    "{}{}{}",
+                    passw.trim(),
+                    &sale,
+                    PEPPER
+                ))),
                 salt.eq(sale),
             ))
             .execute(connection)
@@ -631,14 +641,21 @@ async fn signup(
                 .load(connection)
             {
                 if result.len() > 0 {
-                    if let Ok(_) = session.set((result[0].id, 0, usernamee)).await {
-                        Ok(Json(UserId { id: result[0].id }))
-                    } else {
-                        Err(status::Custom(
-                            Status::InternalServerError,
-                            "Unable to set cookies",
-                        ))
+                    let random_token = generate_32_byte_random();
+                    if let Ok(1) = diesel::insert_into(email_tokens)
+                        .values((user_id.eq(result[0].id), token.eq(&random_token)))
+                        .execute(connection)
+                    {
+                        while let Err(_) = rocket_chat::send_email(
+                            &emaill,
+                            "Email verification",
+                            &("http://localhost:8000/verify-email/".to_owned() + &random_token),
+                        )
+                        .await
+                        .await
+                        {}
                     }
+                    Ok(Json(UserId { id: result[0].id }))
                 } else {
                     Err(status::Custom(Status::Unauthorized, "Not authorized"))
                 }
@@ -651,6 +668,43 @@ async fn signup(
         } else {
             Err(status::Custom(Status::Unauthorized, "Not authorized"))
         }
+    }
+}
+
+#[get("/verify-email/<emailtoken..>", rank = 2)]
+fn confirm_email(emailtoken: PathBuf) -> Redirect {
+    use rocket_chat::schema::email_tokens::dsl::*;
+    use rocket_chat::schema::users::dsl::*;
+
+    let connection = &mut rocket_chat::establish_connection();
+
+    let tokenstring = emailtoken.into_os_string().into_string().unwrap();
+
+    if let Ok(result) = email_tokens
+        .limit(1)
+        .filter(token.eq(&tokenstring))
+        .select(user_id)
+        .load::<i32>(connection)
+    {
+        if result.len() > 0 {
+            if let Ok(_) = diesel::update(users.filter(id.eq(result[0])))
+                .set(email_verified.eq(true))
+                .execute(connection)
+            {
+                if let Ok(_) =
+                    diesel::delete(email_tokens.filter(token.eq(tokenstring))).execute(connection)
+                {
+                    return Redirect::to(uri!(login_page));
+                }
+                Redirect::to(uri!(login_page))
+            } else {
+                Redirect::to(uri!(login_page))
+            }
+        } else {
+            Redirect::to(uri!(login_page))
+        }
+    } else {
+        Redirect::to(uri!(login_page))
     }
 }
 
@@ -856,6 +910,7 @@ fn rocket() -> _ {
                 get_rooms,
                 login,
                 signup,
+                confirm_email,
                 change_password,
                 logout,
                 get_rsa_pub_key,
