@@ -1,5 +1,6 @@
 var STATE = {
-    room: "lobby",
+    room_id: -1,
+    user_id: -1,
     user: "",
     rooms: {},
     connected: false,
@@ -18,9 +19,9 @@ function hashColor(str) {
 
 // Add a new room `name` and change to it. Returns `true` if the room didn't
 // already exist and `false` otherwise.
-function addRoom(name, key) {
-    if (STATE.rooms[name]) {
-        changeRoom(name);
+function addRoom(id, name, key) {
+    if (STATE.rooms[id]) {
+        changeRoom(id);
         return false;
     }
 
@@ -28,14 +29,15 @@ function addRoom(name, key) {
     let node = document.getElementById("room").content.cloneNode(true);
     let room = node.querySelector(".room");
     let button = node.querySelector(".remove-room");
-    room.addEventListener("click", () => changeRoom(name));
+    room.addEventListener("click", () => changeRoom(id));
     button.addEventListener("click", () => confirmRemoveRoom(name));
     room.value = name;
     room.dataset.name = name;
+    room.dataset.id = id;
     roomListDiv.appendChild(node);
 
-    STATE.rooms[name] = { key: key, messages: [] };
-    changeRoom(name);
+    STATE.rooms[id] = { name: name, key: key, messages: [] };
+    changeRoom(id);
     return true;
 }
 
@@ -55,39 +57,38 @@ function closeConfirmRemoveRoom() {
 // if the room was cancelled succesfully and `false` if it didn't exixsted
 function removeRoom(name) {
     let roomListDiv = document.getElementById("room-list");
-    if (
-        !STATE.rooms[name] ||
-        roomListDiv.querySelectorAll(".room").length <= 1
-    ) {
+    let id = roomListDiv.querySelector(`.room[data-name='${name}']`).dataset.id;
+    if (!STATE.rooms[id] || roomListDiv.querySelectorAll(".room").length <= 1) {
         return false;
     }
 
-    const room = name;
-    const user = STATE.user;
+    const room_id = id;
+    const user_id = STATE.user_id;
     if (STATE.connected) {
         fetch("/remove-room", {
             method: "POST",
             body: new URLSearchParams({
-                room,
-                user,
+                room_id,
+                user_id,
             }),
         })
             .then((response) => {
                 if (response.ok) {
                     let rooms = roomListDiv.querySelectorAll(".room");
                     if (
-                        rooms[0].value == name &&
-                        STATE.room == name &&
+                        rooms[0].dataset.id == id &&
+                        STATE.room_id == id &&
                         rooms.length > 1
                     )
-                        changeRoom(rooms[1].value);
-                    else if (STATE.room == name) changeRoom(rooms[0].value);
+                        changeRoom(rooms[1].dataset.id);
+                    else if (STATE.room_id == id)
+                        changeRoom(rooms[0].dataset.id);
 
                     let node = roomListDiv.querySelector(
-                        `.room[data-name='${name}']`
+                        `.room[data-id='${id}']`
                     ).parentElement;
                     roomListDiv.removeChild(node);
-                    delete STATE.rooms[name];
+                    delete STATE.rooms[id];
                     return true;
                 } else {
                     return response.text().then((text) => {
@@ -103,21 +104,21 @@ function removeRoom(name) {
 }
 
 // Change the current room to `name`, restoring its messages.
-function changeRoom(name) {
-    if (STATE.room == name) return;
+function changeRoom(id) {
+    if (STATE.room_id == id) return;
 
     let roomListDiv = document.getElementById("room-list");
     let messagesDiv = document.getElementById("messages");
     if (roomListDiv.querySelectorAll(".room").length == 1) {
         roomListDiv
-            .querySelector(`.room[data-name='${name}`)
+            .querySelector(`.room[data-id='${id}']`)
             .classList.add("active");
     } else {
-        let newRoom = roomListDiv.querySelector(`.room[data-name='${name}']`);
+        let newRoom = roomListDiv.querySelector(`.room[data-id='${id}']`);
         let parentNewRoom = newRoom.parentElement;
         let newRoomRemove = parentNewRoom.querySelector(".remove-room");
         let oldRoom = roomListDiv.querySelector(
-            `.room[data-name='${STATE.room}']`
+            `.room[data-id='${STATE.room_id}']`
         );
         let parentOldRoom = oldRoom.parentElement;
         let oldRoomRemove = parentOldRoom.querySelector(".remove-room");
@@ -129,24 +130,24 @@ function changeRoom(name) {
         newRoomRemove.classList.add("active");
     }
 
-    STATE.room = name;
+    STATE.room_id = id;
     messagesDiv.querySelectorAll(".container-message").forEach((msg) => {
         messagesDiv.removeChild(msg);
     });
 
-    STATE.rooms[name].messages.forEach((data) =>
-        addMessage(name, data.username, data.message)
+    STATE.rooms[id].messages.forEach((data) =>
+        addMessage(id, data.user_id, data.username, data.message)
     );
 }
 
 // Add `message` from `username` to `room`. If `push`, then actually store the
 // message. If the current room is `room`, render the message.
-function addMessage(room, username, message, push = false) {
+function addMessage(room_id, _user_id, username, message, push = false) {
     if (push) {
-        STATE.rooms[room].messages.push({ username, message });
+        STATE.rooms[room_id].messages.push({ username, message });
     }
 
-    if (STATE.room == room) {
+    if (STATE.room_id == room_id) {
         var node = document.getElementById("message").content.cloneNode(true);
         node.querySelector(".message .username").textContent = username;
         node.querySelector(".message .username").style.color =
@@ -175,13 +176,19 @@ function subscribe(uri) {
 
         events.addEventListener("message", (ev) => {
             const msg = JSON.parse(ev.data);
-            if (!"message" in msg || !"room" in msg || !"username" in msg)
+            if (
+                !"message" in msg ||
+                !"room_id" in msg ||
+                !"user_id" in msg ||
+                !"user_name" in msg
+            )
                 return;
-            if (STATE.rooms[msg.room])
+            if (STATE.rooms[msg.room_id])
                 addMessage(
-                    msg.room,
-                    msg.username,
-                    decryptAes(msg.message, STATE.rooms[msg.room].key),
+                    msg.room_id,
+                    msg.user_id,
+                    msg.user_name,
+                    decryptAes(msg.message, STATE.rooms[msg.room_id].key),
                     true
                 );
         });
@@ -284,11 +291,11 @@ function getPubKey() {
 }
 
 function getRooms() {
-    const username = STATE.user;
+    const user_id = STATE.user_id;
     const rsa_key = forge.pki.publicKeyToPem(STATE.clientKeys.publicKey);
     fetch("/get-personal-rooms", {
         method: "POST",
-        body: new URLSearchParams({ username, rsa_key }),
+        body: new URLSearchParams({ user_id, rsa_key }),
     })
         .then((response) => {
             if (response.ok) {
@@ -301,16 +308,18 @@ function getRooms() {
         })
         .then((data) => {
             const parsed = JSON.parse(data);
+            console.log(parsed);
             if (parsed.length > 0) {
                 parsed.forEach((room) => {
-                    addRoom(room.room, decryptRsa(room.key));
+                    addRoom(room.room_id, room.room_name, decryptRsa(room.key));
                     room.messages.forEach((message) => {
                         addMessage(
-                            message.room,
-                            message.username,
+                            message.room_id,
+                            message.user_id,
+                            message.user_name,
                             decryptAes(
                                 message.message,
-                                STATE.rooms[message.room].key
+                                STATE.rooms[message.room_id].key
                             ),
                             true
                         );
@@ -326,7 +335,7 @@ function getRooms() {
 }
 
 function setup() {
-    fetch("/get-user", {
+    fetch("/whoami", {
         method: "GET",
     })
         .then((response) => {
@@ -339,7 +348,9 @@ function setup() {
             }
         })
         .then((data) => {
-            STATE.user = data;
+            data = JSON.parse(data);
+            STATE.user_id = data.id;
+            STATE.user = data.username;
             document.title += " | " + STATE.user;
             getRooms();
         })
@@ -362,18 +373,24 @@ function init() {
             return;
         }
 
-        const room = STATE.room;
+        const room_id = STATE.room_id;
+        const user_id = STATE.user_id;
+        const user_name = STATE.user;
         const message = encryptAes(
             messageField.value.trim(),
-            STATE.rooms[STATE.room].key
+            STATE.rooms[STATE.room_id].key
         );
-        const username = STATE.user;
-        if (!message || !username) return;
+        if (!message || !user_name) return;
 
         if (STATE.connected) {
             fetch("/message", {
                 method: "POST",
-                body: new URLSearchParams({ room, username, message }),
+                body: new URLSearchParams({
+                    room_id,
+                    user_id,
+                    user_name,
+                    message,
+                }),
             })
                 .then((response) => {
                     if (response.ok) {
@@ -416,7 +433,7 @@ function init() {
                         available_rooms.forEach((room) => {
                             roomDataList.innerHTML +=
                                 '<option value="' +
-                                room.room +
+                                room.room_name +
                                 '" data-rp="' +
                                 room.require_password +
                                 '" >';
@@ -438,14 +455,16 @@ function init() {
             getPubKey();
             const require_password =
                 document.getElementById("check-password").checked;
-            const room = document.getElementById("new-room-name").value.trim();
+            const room_name = document
+                .getElementById("new-room-name")
+                .value.trim();
             const password = require_password
                 ? encryptRsa(
                       document.getElementById("new-room-password").value.trim()
                   )
                 : null;
             const hidden = false;
-            const user = STATE.user;
+            const user_id = STATE.user_id;
             const rsa_client_key = forge.pki.publicKeyToPem(
                 STATE.clientKeys.publicKey
             );
@@ -458,11 +477,11 @@ function init() {
             fetch("/add-room", {
                 method: "POST",
                 body: new URLSearchParams({
-                    room,
+                    room_name,
                     password,
                     require_password,
                     hidden,
-                    user,
+                    user_id,
                     rsa_client_key,
                 }),
             })
@@ -477,7 +496,11 @@ function init() {
                 })
                 .then((data) => {
                     const parsed = JSON.parse(data);
-                    addRoom(parsed.room, decryptRsa(parsed.key));
+                    addRoom(
+                        parsed.room_id,
+                        parsed.room_name,
+                        decryptRsa(parsed.key)
+                    );
                     parsed.messages.forEach((message) => {
                         addMessage(
                             message.room,

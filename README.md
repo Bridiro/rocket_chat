@@ -18,11 +18,11 @@ One important thing to remember is that you have to implement this **trigger** i
     BEGIN
         DECLARE count_users INT;
 
-        IF OLD.room_name != 'lobby' THEN
-            SELECT COUNT(*) INTO count_users FROM rooms_users WHERE room_name = OLD.room_name;
+        IF OLD.room_id != 1 THEN
+            SELECT COUNT(*) INTO count_users FROM rooms_users WHERE room_id = OLD.room_id;
 
             IF count_users = 0 THEN
-                DELETE FROM rooms WHERE room_name = OLD.room_name;
+                DELETE FROM rooms WHERE id = OLD.room_id;
             END IF;
         END IF;
     END;
@@ -39,8 +39,8 @@ and
     AFTER INSERT ON users
     FOR EACH ROW
     BEGIN
-        INSERT INTO rooms_users (room_name, user)
-        VALUES ('lobby', NEW.username);
+        INSERT INTO rooms_users (room_id, user_id)
+        VALUES (1, NEW.id);
     END;
     //
 
