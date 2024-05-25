@@ -59,46 +59,24 @@ function encryptRsa(message) {
     }
 }
 
-function resetUserError() {
-    document.getElementById("username").classList.remove("errorField");
-    let usernameLabel = document.querySelector('label[for="username"]');
-    usernameLabel.classList.remove("errorLabel");
-    usernameLabel.innerText = "Username";
+function fieldError(m, f) {
+    f.classList.add("errorField");
+    let fLabel = document.querySelector('label[for="' + f.id + '"]');
+    fLabel.classList.add("errorLabel");
+    fLabel.innerText += " | " + m;
 }
 
-function userError() {
-    document.getElementById("username").classList.add("errorField");
-    let usernameLabel = document.querySelector('label[for="username"]');
-    usernameLabel.classList.add("errorLabel");
-    usernameLabel.innerText = "Username | empty field!";
+function fieldReset(f) {
+    try {
+        f.classList.remove("errorField");
+        let fLabel = document.querySelector('label[for="' + f.id + '"]');
+        fLabel.classList.remove("errorLabel");
+        fLabel.innerText = fLabel.innerText.split(" | ")[0];
+    } catch (error) {}
 }
-
-function resetPassError() {
-    document.getElementById("password").classList.remove("errorField");
-    let usernameLabel = document.querySelector('label[for="password"]');
-    usernameLabel.classList.remove("errorLabel");
-    usernameLabel.innerText = "Password";
-}
-
-function passError() {
-    document.getElementById("password").classList.add("errorField");
-    let passwordLabel = document.querySelector('label[for="password"]');
-    passwordLabel.classList.add("errorLabel");
-    passwordLabel.innerText = "Password | empty field!";
-}
-
-document.getElementById("username").addEventListener("input", () => {
-    resetUserError();
-    resetPassError();
-});
-
-document.getElementById("password").addEventListener("input", () => {
-    resetUserError();
-    resetPassError();
-});
 
 // Set up handler for the login form
-document.querySelector("form").addEventListener("submit", (e) => {
+document.getElementById("login-form").addEventListener("submit", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
@@ -106,14 +84,21 @@ document.querySelector("form").addEventListener("submit", (e) => {
         const userField = document.getElementById("username");
         const passField = document.getElementById("password");
 
+        fieldReset(userField);
+        fieldReset(passField);
+
+        let err = false;
+
         if (userField.value.trim() == "") {
-            userError();
+            fieldError("Username is required", userField);
+            err = true;
         }
         if (passField.value.trim() == "") {
-            passError();
+            fieldError("Password is required", passField);
+            err = true;
         }
 
-        if (userField.value.trim() == "" || passField.value.trim() == "") {
+        if (err) {
             return;
         }
 
@@ -129,17 +114,11 @@ document.querySelector("form").addEventListener("submit", (e) => {
         })
             .then((response) => {
                 if (response.ok) {
-                    return response.text();
+                    location.href = "/";
                 } else {
                     return response.text().then((text) => {
                         throw new Error(text);
                     });
-                }
-            })
-            .then((data) => {
-                console.log(data);
-                if (data === "GRANTED") {
-                    window.location.href = "/";
                 }
             })
             .catch((err) => {
@@ -158,48 +137,88 @@ document.querySelector("form").addEventListener("submit", (e) => {
     }
 });
 
-document.getElementById("signup-button").addEventListener("click", (e) => {
+document.getElementById("signup-button").addEventListener("click", () => {
+    document.getElementById("login-form").style.display = "none";
+    document.getElementById("signup-form").style.display = "block";
+});
+
+document.getElementById("signup-form").addEventListener("submit", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
         getPubKey();
-        const userField = document.getElementById("username");
-        const passField = document.getElementById("password");
+        const nameField = document.getElementById("fullname");
+        const surnameField = document.getElementById("surname");
+        const emailField = document.getElementById("email");
+        const userField = document.getElementById("username-signup");
+        const passField = document.getElementById("password-signup");
+        const repeatField = document.getElementById("password-signup-repeat");
 
+        fieldReset(nameField);
+        fieldReset(surnameField);
+        fieldReset(emailField);
+        fieldReset(userField);
+        fieldReset(passField);
+        fieldReset(repeatField);
+
+        let err = false;
+
+        if (nameField.value.trim() == "") {
+            fieldError("Name is required", nameField);
+            err = true;
+        }
+        if (surnameField.value.trim() == "") {
+            fieldError("Surname is required", surnameField);
+            err = true;
+        }
+        if (emailField.value.trim() == "") {
+            fieldError("Email is required", emailField);
+            err = true;
+        }
         if (userField.value.trim() == "") {
-            userError();
+            fieldError("Username is required", userField);
+            err = true;
         }
         if (passField.value.trim() == "") {
-            passError();
+            fieldError("Password is required", passField);
+            err = true;
+        }
+        if (repeatField.value.trim() == "") {
+            fieldError("Repeat password is required", repeatField);
+            err = true;
+        }
+        if (passField.value.trim() != repeatField.value.trim()) {
+            fieldError("Passwords don't match", repeatField);
+            err = true;
         }
 
-        if (userField.value.trim() == "" || passField.value.trim() == "") {
+        if (err) {
             return;
         }
 
+        const full_name = nameField.value.trim();
+        const surname = surnameField.value.trim();
+        const email = emailField.value.trim();
         const username = userField.value.trim();
         const password = encryptRsa(passField.value);
 
         fetch("/signup", {
             method: "POST",
             body: new URLSearchParams({
+                full_name,
+                surname,
+                email,
                 username,
                 password,
             }),
         })
             .then((response) => {
                 if (response.ok) {
-                    return response.text();
+                    location.href = "/";
                 } else {
                     return response.text().then((text) => {
                         throw new Error(text);
                     });
-                }
-            })
-            .then((data) => {
-                console.log(data);
-                if (data === "GRANTED") {
-                    window.location.href = "/";
                 }
             })
             .catch((err) => {
@@ -216,6 +235,11 @@ document.getElementById("signup-button").addEventListener("click", (e) => {
                     .classList.add("errorLabel");
             });
     }
+});
+
+document.getElementById("login-button-signup").addEventListener("click", () => {
+    document.getElementById("signup-form").style.display = "none";
+    document.getElementById("login-form").style.display = "block";
 });
 
 subscribe("/events");

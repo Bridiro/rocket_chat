@@ -10,7 +10,6 @@ body {
     background-color: #080710;
     width: 100%;
     height: 100%;
-    overflow: hidden;
 }
 
 @media only screen and (max-width: 600px) {
@@ -56,7 +55,12 @@ form {
     padding: 50px 35px;
 }
 
-#login-button {
+#signup-form {
+    display: none;
+}
+
+#login-button,
+#signup-button-signup {
     margin-top: 40px;
     width: 100%;
     background-color: #ffffff;
@@ -68,7 +72,8 @@ form {
     cursor: pointer;
 }
 
-#signup-button {
+#signup-button,
+#login-button-signup {
     margin-top: 10;
     width: 100%;
     background-color: rgba(255, 255, 255, 0);
@@ -87,8 +92,21 @@ label {
     font-weight: 500;
 }
 
+.signup-label {
+    display: block;
+    margin-top: 15px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
 #username,
-#password {
+#password,
+#username-signup,
+#password-signup,
+#password-signup-repeat,
+#email,
+#fullname,
+#surname {
     display: block;
     height: 50px;
     width: 100%;
