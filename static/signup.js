@@ -75,20 +75,39 @@ function fieldReset(f) {
     } catch (error) {}
 }
 
-// Set up handler for the login form
 document.querySelector("form").addEventListener("submit", (e) => {
     e.preventDefault();
 
     if (STATE.connected) {
         getPubKey();
+        const nameField = document.getElementById("fullname");
+        const surnameField = document.getElementById("surname");
+        const emailField = document.getElementById("email");
         const userField = document.getElementById("username");
         const passField = document.getElementById("password");
+        const repeatField = document.getElementById("password-repeat");
 
+        fieldReset(nameField);
+        fieldReset(surnameField);
+        fieldReset(emailField);
         fieldReset(userField);
         fieldReset(passField);
+        fieldReset(repeatField);
 
         let err = false;
 
+        if (nameField.value.trim() == "") {
+            fieldError("Name is required", nameField);
+            err = true;
+        }
+        if (surnameField.value.trim() == "") {
+            fieldError("Surname is required", surnameField);
+            err = true;
+        }
+        if (emailField.value.trim() == "") {
+            fieldError("Email is required", emailField);
+            err = true;
+        }
         if (userField.value.trim() == "") {
             fieldError("Username is required", userField);
             err = true;
@@ -97,17 +116,31 @@ document.querySelector("form").addEventListener("submit", (e) => {
             fieldError("Password is required", passField);
             err = true;
         }
+        if (repeatField.value.trim() == "") {
+            fieldError("Repeat password is required", repeatField);
+            err = true;
+        }
+        if (passField.value.trim() != repeatField.value.trim()) {
+            fieldError("Passwords don't match", repeatField);
+            err = true;
+        }
 
         if (err) {
             return;
         }
 
+        const full_name = nameField.value.trim();
+        const surname = surnameField.value.trim();
+        const email = emailField.value.trim();
         const username = userField.value.trim();
         const password = encryptRsa(passField.value);
 
-        fetch("/login", {
+        fetch("/signup", {
             method: "POST",
             body: new URLSearchParams({
+                full_name,
+                surname,
+                email,
                 username,
                 password,
             }),
@@ -129,7 +162,7 @@ document.querySelector("form").addEventListener("submit", (e) => {
                     'label[for="username"]'
                 );
                 usernameLabel.classList.add("errorLabel");
-                usernameLabel.innerText = "Username | invalid user or password";
+                usernameLabel.innerText = "Username | can't create user";
                 document
                     .querySelector('label[for="password"]')
                     .classList.add("errorLabel");
@@ -137,8 +170,8 @@ document.querySelector("form").addEventListener("submit", (e) => {
     }
 });
 
-document.getElementById("signup-button").addEventListener("click", () => {
-    location.href = "/signup";
+document.getElementById("login-button").addEventListener("click", () => {
+    location.href = "/login";
 });
 
 subscribe("/events");

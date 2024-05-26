@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Rocket Chat</title>
+        <link rel="preconnect" href="https://fonts.gstatic.com">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;600&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="signup.css" />
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"
+            integrity="sha512-95iy0RZIbw3H/FgfAj2wnCQJlzFQ+eaSfUeV/l8WVyGHKSRMzm3M/O+85j9ba/HFphkijrCTDjcuDX0BL2lthA=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+        <script src="signup.js" charset="utf-8" defer></script>
+    </head>
+    <body>
+        <main>
+            <form>
+                <h3>Signup Here</h3>
+
+                <label class="signup-label" for="fullname">Name</label>
+                <input
+                    type="text"
+                    name="fullname"
+                    id="fullname"
+                    autocomplete="off"
+                    placeholder="Name"
+                    minlength="1"
+                    maxlength="100"
+                />
+
+                <label class="signup-label" for="surname">Surname</label>
+                <input
+                    type="text"
+                    name="surname"
+                    id="surname"
+                    autocomplete="off"
+                    placeholder="Surname"
+                    minlength="1"
+                    maxlength="100"
+                />
+
+                <label class="signup-label" for="email">Email</label>
+                <input
+                    type="email"
+                    name="email"
+                    id="email"
+                    autocomplete="off"
+                    placeholder="Email"
+                    minlength="1"
+                    maxlength="100"
+                />
+
+                <label class="signup-label" for="username">Username</label>
+                <input
+                    type="text"
+                    name="username"
+                    id="username"
+                    autocomplete="off"
+                    placeholder="Username"
+                    maxlength="20"
+                />
+
+                <label class="signup-label" for="password">Password</label>
+                <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    autocomplete="off"
+                    placeholder="Password"
+                    minlength="8"
+                    maxlength="30"
+                />
+
+                <label class="signup-label" for="password-repeat">Repeat Password</label>
+                <input
+                    type="password"
+                    name="password-repeat"
+                    id="password-repeat"
+                    autocomplete="off"
+                    placeholder="Repeat Password"
+                    minlength="8"
+                    maxlength="30"
+                />
+
+                <input
+                    type="submit"
+                    name="signup"
+                    id="signup-button"
+                    value="Sign up"
+                />
+                <input
+                    type="button"
+                    name="login"
+                    id="login-button"
+                    value="Log in"
+                />
+            </form>
+        </main>
+    </body>
+</html>

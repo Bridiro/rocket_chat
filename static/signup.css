@@ -55,7 +55,7 @@ form {
     padding: 50px 35px;
 }
 
-#login-button {
+#signup-button {
     margin-top: 40px;
     width: 100%;
     background-color: #ffffff;
@@ -67,7 +67,7 @@ form {
     cursor: pointer;
 }
 
-#signup-button {
+#login-button {
     margin-top: 10;
     width: 100%;
     background-color: rgba(255, 255, 255, 0);
@@ -94,7 +94,11 @@ label {
 }
 
 #username,
-#password {
+#password,
+#password-repeat,
+#email,
+#fullname,
+#surname {
     display: block;
     height: 50px;
     width: 100%;
