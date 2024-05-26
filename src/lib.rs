@@ -29,7 +29,7 @@ pub async fn send_email(
 
     let client = reqwest::Client::new();
     let res = client
-        .post("http://bridi.altervista.org/mail_api.php")
+        .post("https://bridi.altervista.org/mail_api.php")
         .json(&map)
         .send()
         .await

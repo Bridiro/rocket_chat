@@ -671,7 +671,7 @@ async fn signup(
     }
 }
 
-#[get("/verify-email/<emailtoken..>", rank = 2)]
+#[get("/verify-email/<emailtoken..>")]
 fn confirm_email(emailtoken: PathBuf) -> Redirect {
     use rocket_chat::schema::email_tokens::dsl::*;
     use rocket_chat::schema::users::dsl::*;
@@ -870,6 +870,17 @@ async fn login_page(
     }
 }
 
+#[get("/signup")]
+async fn signup_page(
+    session: Session<'_, (i32, i32, String)>,
+) -> Result<Option<NamedFile>, Redirect> {
+    if let Ok(Some(_)) = session.get().await {
+        Err(Redirect::to(uri!(chat_page)))
+    } else {
+        Ok(NamedFile::open("pages/signup.html").await.ok())
+    }
+}
+
 #[get("/")]
 async fn chat_page(
     session: Session<'_, (i32, i32, String)>,
@@ -901,6 +912,7 @@ fn rocket() -> _ {
             "/",
             routes![
                 login_page,
+                signup_page,
                 chat_page,
                 whoami,
                 post,

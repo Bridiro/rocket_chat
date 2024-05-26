@@ -615,7 +615,7 @@ function init() {
         let new_password_input = document.getElementById("new-password");
         let repeat_password_input = document.getElementById("confirm-password");
 
-        let user = STATE.user;
+        let user_id = STATE.user_id;
         let old_password = old_password_input.value.trim();
         let new_password = new_password_input.value.trim();
         let repeat_password = repeat_password_input.value.trim();
@@ -636,7 +636,7 @@ function init() {
         fetch("/change-pass", {
             method: "POST",
             body: new URLSearchParams({
-                user,
+                user_id,
                 old_password,
                 new_password,
             }),
