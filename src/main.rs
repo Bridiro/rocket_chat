@@ -4,6 +4,10 @@ extern crate rocket;
 use base64::prelude::*;
 use diesel::prelude::*;
 use rand::Rng;
+use rocket::serde::json::serde_json;
+use rocket::tokio;
+use rocket::tokio::sync::mpsc::{self, unbounded_channel, UnboundedReceiver, UnboundedSender};
+use rocket::tokio::sync::RwLock;
 use rocket::{
     form::{self, Form},
     fs::{relative, FileServer, NamedFile},
@@ -28,7 +32,10 @@ use rsa::{
     Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
 };
 use sha2::{Digest, Sha512};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::{error::Error, path::PathBuf, sync::Mutex, time::Duration};
+use ws::Message;
 
 const PEPPER: &str = "Zk4pGkvF9n5FPXSvrccl0XR33ach0+Vf/rliGZUUc+U=";
 
@@ -201,6 +208,89 @@ fn structval<'v>(val: &String, min: usize, max: usize) -> form::Result<'v, ()> {
         Err(rocket::form::Error::validation("invalid string"))?;
     }
     Ok(())
+}
+
+type Users = Arc<RwLock<HashMap<i32, mpsc::UnboundedSender<Message>>>>;
+type Groups = Arc<RwLock<HashMap<i32, HashSet<i32>>>>;
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+enum ChatMessage {
+    Direct {
+        sender: i32,
+        recipient: i32,
+        content: String,
+    },
+    Group {
+        sender: i32,
+        group_id: i32,
+        content: String,
+    },
+}
+
+#[get("/ws/<user_id>")]
+async fn echo_channel<'r>(
+    user_id: i32,
+    ws: ws::WebSocket,
+    users: &'r State<Users>,
+    groups: &'r State<Arc<RwLock<Groups>>>,
+) -> ws::Channel<'r> {
+    use rocket::futures::{SinkExt, StreamExt};
+
+    let (tx, mut rx): (UnboundedSender<Message>, UnboundedReceiver<Message>) = unbounded_channel();
+    users.write().await.insert(user_id, tx);
+
+    ws.channel(move |mut stream| {
+        Box::pin(async move {
+            loop {
+                tokio::select! {
+                    Some(Ok(msg)) = stream.next() => {
+                        if let Message::Text(text) = msg {
+                            if let Ok(chat_message) = serde_json::from_str::<ChatMessage>(&text) {
+
+                                // Gestire la consegna del messaggio
+                                match chat_message {
+                                    ChatMessage::Direct { recipient, .. } => {
+                                        let users = users.read().await;
+                                        if let Some(sender) = users.get(&recipient) {
+                                            if let Err(err) = sender.send(Message::text(text.clone())) {
+                                                eprintln!("Failed to send message to recipient: {:?}", err);
+                                            }
+                                        }
+                                    },
+                                    ChatMessage::Group { group_id, .. } => {
+                                        let groups_lock = groups.read().await;
+                                        let groups = groups_lock.read().await;
+                                        if let Some(members) = groups.get(&group_id) {
+                                            let users = users.read().await;
+                                            for member in members {
+                                                if let Some(sender) = users.get(member) {
+                                                    if let Err(err) = sender.send(Message::text(text.clone())) {
+                                                        eprintln!("Failed to send message to group member: {:?}", err);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                }
+                            } else {
+                                eprintln!("Failed to deserialize incoming message: {:?}", text);
+                            }
+                        }
+                    },
+                    Some(msg) = rx.recv() => {
+                        if stream.send(msg).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            users.write().await.remove(&user_id);
+
+            Ok(())
+        })
+    })
 }
 
 #[post("/message", data = "<form>")]
@@ -902,15 +992,21 @@ fn rocket() -> _ {
         cookie: CookieConfig::default(),
     };
 
+    let users: Users = Arc::new(RwLock::new(HashMap::new()));
+    let groups: Groups = Arc::new(RwLock::new(HashMap::new()));
+
     rocket::build()
         .attach(store.fairing())
         .manage(channel::<GroupMessage>(1024).0)
         .manage(AppState {
             keys: Mutex::new(Some(generate_key_pair())),
         })
+        .manage(users)
+        .manage(Arc::new(RwLock::new(groups)))
         .mount(
             "/",
             routes![
+                echo_channel,
                 login_page,
                 signup_page,
                 chat_page,

@@ -16,3 +16,4 @@ base64 = "0.22.0"
 chrono = "0.4.34"
 rocket-session-store = "0.2.0"
 reqwest = { version = "0.12.4", features = ["json"] }
+ws = { package = "rocket_ws", version = "0.1.1" }
