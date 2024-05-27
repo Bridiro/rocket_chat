@@ -222,33 +222,62 @@ enum ChatMessage {
         content: String,
     },
     Group {
-        sender: i32,
+        sender_id: i32,
+        sender_name: String,
         group_id: i32,
         content: String,
     },
 }
 
-#[get("/ws/<user_id>")]
-async fn echo_channel<'r>(
+#[get("/messages/<user_id>")]
+async fn messages<'r>(
     user_id: i32,
     ws: ws::WebSocket,
     users: &'r State<Users>,
     groups: &'r State<Arc<RwLock<Groups>>>,
-) -> ws::Channel<'r> {
+    session: Session<'_, (i32, i32, String)>,
+) -> Result<ws::Channel<'r>, status::Custom<&'static str>> {
     use rocket::futures::{SinkExt, StreamExt};
 
-    let (tx, mut rx): (UnboundedSender<Message>, UnboundedReceiver<Message>) = unbounded_channel();
-    users.write().await.insert(user_id, tx);
+    if let Ok(_) = session.get().await {
+        let (tx, mut rx): (UnboundedSender<Message>, UnboundedReceiver<Message>) =
+            unbounded_channel();
+        users.write().await.insert(user_id, tx);
+        {
+            let group_write_lock = groups.write().await;
+            let mut groups = group_write_lock.write().await;
 
-    ws.channel(move |mut stream| {
+            if !users.read().await.contains_key(&user_id) {
+                return Err(status::Custom(
+                    Status::InternalServerError,
+                    "error inserting message",
+                ));
+            }
+
+            if let Ok(groups_for_user) = rocket_chat::schema::rooms_users::table
+                .filter(rocket_chat::schema::rooms_users::user_id.eq(user_id))
+                .select(RoomUserDB::as_select())
+                .load(&mut rocket_chat::establish_connection())
+            {
+                for group in groups_for_user {
+                    if let Some(group_members) = groups.get_mut(&group.room_id) {
+                        group_members.insert(user_id);
+                    } else {
+                        let mut new_group = HashSet::new();
+                        new_group.insert(user_id);
+                        groups.insert(group.room_id, new_group);
+                    }
+                }
+            }
+        }
+
+        Ok(ws.channel(move |mut stream| {
         Box::pin(async move {
             loop {
                 tokio::select! {
                     Some(Ok(msg)) = stream.next() => {
                         if let Message::Text(text) = msg {
                             if let Ok(chat_message) = serde_json::from_str::<ChatMessage>(&text) {
-
-                                // Gestire la consegna del messaggio
                                 match chat_message {
                                     ChatMessage::Direct { recipient, .. } => {
                                         let users = users.read().await;
@@ -264,15 +293,18 @@ async fn echo_channel<'r>(
                                         if let Some(members) = groups.get(&group_id) {
                                             let users = users.read().await;
                                             for member in members {
-                                                if let Some(sender) = users.get(member) {
-                                                    if let Err(err) = sender.send(Message::text(text.clone())) {
-                                                        eprintln!("Failed to send message to group member: {:?}", err);
+                                                if member != &user_id {
+                                                    if let Some(sender) = users.get(member) {
+                                                        if let Err(err) = sender.send(Message::text(text.clone())) {
+                                                            eprintln!("Failed to send message to group member: {:?}", err);
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
                                     },
                                 }
+                                save_msg_db(chat_message);
                             } else {
                                 eprintln!("Failed to deserialize incoming message: {:?}", text);
                             }
@@ -286,11 +318,29 @@ async fn echo_channel<'r>(
                 }
             }
 
-            users.write().await.remove(&user_id);
+            {
+                users.write().await.remove(&user_id);
+                let group_write_lock = groups.write().await;
+                let mut groups = group_write_lock.write().await;
+                if let Ok(groups_for_user) = rocket_chat::schema::rooms_users::table
+                    .filter(rocket_chat::schema::rooms_users::user_id.eq(&user_id))
+                    .select(RoomUserDB::as_select())
+                    .load(&mut rocket_chat::establish_connection())
+                {
+                    for group in groups_for_user {
+                        if let Some(group_members) = groups.get_mut(&group.room_id) {
+                            group_members.remove(&user_id);
+                        }
+                    }
+                }
+            }
 
             Ok(())
         })
-    })
+    }))
+    } else {
+        return Err(status::Custom(Status::Unauthorized, "no valid session"));
+    }
 }
 
 #[post("/message", data = "<form>")]
@@ -305,7 +355,7 @@ async fn post(
         let connection = &mut rocket_chat::establish_connection();
         let message = form.into_inner();
 
-        if user.0 == message.user_id {
+        if user.1 == 1 {
             if let Ok(_) = insert_into(rocket_chat::schema::messages::dsl::messages)
                 .values((
                     rocket_chat::schema::messages::room_id.eq(&message.room_id),
@@ -949,6 +999,37 @@ fn generate_32_byte_random() -> String {
     }
 }
 
+fn save_msg_db(msg: ChatMessage) {
+    let connection = &mut rocket_chat::establish_connection();
+
+    match msg {
+        ChatMessage::Direct {
+            sender: _,
+            recipient: _,
+            content: _,
+        } => {
+            todo!();
+        }
+        ChatMessage::Group {
+            sender_id,
+            group_id,
+            content,
+            ..
+        } => {
+            if let Ok(_) = diesel::insert_into(rocket_chat::schema::messages::dsl::messages)
+                .values((
+                    rocket_chat::schema::messages::room_id.eq(group_id),
+                    rocket_chat::schema::messages::user_id.eq(sender_id),
+                    rocket_chat::schema::messages::content.eq(content),
+                ))
+                .execute(connection)
+            {
+                return;
+            }
+        }
+    }
+}
+
 #[get("/login")]
 async fn login_page(
     session: Session<'_, (i32, i32, String)>,
@@ -1006,7 +1087,7 @@ fn rocket() -> _ {
         .mount(
             "/",
             routes![
-                echo_channel,
+                messages,
                 login_page,
                 signup_page,
                 chat_page,
