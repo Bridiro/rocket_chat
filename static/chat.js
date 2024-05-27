@@ -6,6 +6,8 @@ var STATE = {
     connected: false,
 };
 
+var ws = null;
+
 // Generate a color from a "hash" of a string. Thanks, internet.
 function hashColor(str) {
     let hash = 0;
@@ -169,7 +171,6 @@ function scrollToBottom() {
 // Subscribe to the event source at `uri` with exponential backoff reconnect.
 function subscribe(uri) {
     let retryTime = 1;
-    let done = false;
 
     function connect(uri) {
         const events = new EventSource(uri);
@@ -197,10 +198,6 @@ function subscribe(uri) {
             setConnectedStatus(true);
             console.log(`connected to event stream at ${uri}`);
             getPubKey();
-            if (!done) {
-                setup();
-                done = true;
-            }
             retryTime = 1;
         });
 
@@ -308,7 +305,6 @@ function getRooms() {
         })
         .then((data) => {
             const parsed = JSON.parse(data);
-            console.log(parsed);
             if (parsed.length > 0) {
                 parsed.forEach((room) => {
                     addRoom(room.room_id, room.room_name, decryptRsa(room.key));
@@ -357,11 +353,35 @@ function setup() {
         .catch((err) => {
             console.error(err);
         });
+    return true;
 }
 
 function init() {
     // Generate RSA keys for the client
     STATE.clientKeys = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+
+    setup();
+    setTimeout(() => {
+        ws = new WebSocket(
+            "ws://" + location.host + "/messages/" + STATE.user_id
+        );
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if ("Group" in msg) {
+                addMessage(
+                    msg.Group.group_id,
+                    msg.Group.sender_id,
+                    msg.Group.sender_name,
+                    decryptAes(
+                        msg.Group.content,
+                        STATE.rooms[msg.Group.group_id].key
+                    ),
+                    true
+                );
+            }
+        };
+    }, 300);
 
     // Set up the handler to post a message.
     document.getElementById("new-message").addEventListener("submit", (e) => {
@@ -373,38 +393,29 @@ function init() {
             return;
         }
 
-        const room_id = STATE.room_id;
-        const user_id = STATE.user_id;
-        const user_name = STATE.user;
-        const message = encryptAes(
+        const sender_id = STATE.user_id;
+        const sender_name = STATE.user;
+        const group_id = STATE.room_id;
+        const content = encryptAes(
             messageField.value.trim(),
             STATE.rooms[STATE.room_id].key
         );
-        if (!message || !user_name) return;
+        if (!content || !sender_name) return;
 
-        if (STATE.connected) {
-            fetch("/message", {
-                method: "POST",
-                body: new URLSearchParams({
-                    room_id,
-                    user_id,
-                    user_name,
-                    message,
-                }),
-            })
-                .then((response) => {
-                    if (response.ok) {
-                        messageField.value = "";
-                    } else {
-                        return response.text().then((text) => {
-                            throw new Error(text);
-                        });
-                    }
-                })
-                .catch((err) => {
-                    console.error(err);
-                });
-        }
+        ws.send(
+            '{ "Group" :' +
+                JSON.stringify({ sender_id, sender_name, group_id, content }) +
+                " }"
+        );
+        addMessage(
+            group_id,
+            sender_id,
+            sender_name,
+            decryptAes(content, STATE.rooms[group_id].key),
+            true
+        );
+
+        messageField.value = "";
     });
 
     // Set up the open popup handler and get available rooms.
