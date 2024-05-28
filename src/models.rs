@@ -2,7 +2,32 @@ use chrono::NaiveDateTime;
 
 use diesel::prelude::*;
 
-use crate::schema::{admins, email_tokens, messages, rooms, rooms_users, users};
+use crate::schema::{
+    admins, direct_messages, directs, email_tokens, messages, rooms, rooms_users, users,
+};
+#[derive(Queryable, Selectable, Identifiable, Debug, PartialEq, Associations)]
+#[diesel(belongs_to(UserDB, foreign_key = sender_id))]
+#[diesel(belongs_to(DirectDB, foreign_key = chat_id))]
+#[diesel(table_name = direct_messages)]
+#[diesel(primary_key(id))]
+pub struct DirectMessageDB {
+    pub id: i32,
+    pub chat_id: i32,
+    pub sender_id: i32,
+    pub message: String,
+    pub message_time: Option<NaiveDateTime>,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Debug, PartialEq)]
+#[diesel(belongs_to(UserDB, foreign_key = user1_id))]
+#[diesel(table_name = directs)]
+#[diesel(primary_key(id))]
+pub struct DirectDB {
+    pub id: i32,
+    pub user1_id: i32,
+    pub user2_id: i32,
+    pub aes_key: String,
+}
 
 #[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
 #[diesel(belongs_to(RoomDB, foreign_key = room_id))]

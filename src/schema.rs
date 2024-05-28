@@ -7,6 +7,25 @@ diesel::table! {
 }
 
 diesel::table! {
+    direct_messages (id) {
+        id -> Integer,
+        chat_id -> Integer,
+        sender_id -> Integer,
+        message -> Text,
+        message_time -> Nullable<Datetime>,
+    }
+}
+
+diesel::table! {
+    directs (id) {
+        id -> Integer,
+        user1_id -> Integer,
+        user2_id -> Integer,
+        aes_key -> Text,
+    }
+}
+
+diesel::table! {
     email_tokens (user_id) {
         user_id -> Integer,
         token -> Text,
@@ -61,6 +80,8 @@ diesel::table! {
 }
 
 diesel::joinable!(admins -> users (id));
+diesel::joinable!(direct_messages -> directs (chat_id));
+diesel::joinable!(direct_messages -> users (sender_id));
 diesel::joinable!(email_tokens -> users (user_id));
 diesel::joinable!(messages -> rooms (room_id));
 diesel::joinable!(messages -> users (user_id));
@@ -69,6 +90,8 @@ diesel::joinable!(rooms_users -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     admins,
+    direct_messages,
+    directs,
     email_tokens,
     messages,
     rooms,

@@ -59,7 +59,7 @@ struct AppState {
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "rocket::serde")]
-struct GetRoomsUser {
+struct GetPersonalChats {
     user_id: i32,
     rsa_key: String,
 }
@@ -202,6 +202,56 @@ impl PubRoom {
     }
 }
 
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct Direct {
+    user_id: i32,
+    user_name: String,
+    key: String,
+    messages: Vec<DirectMessage>,
+}
+
+impl Direct {
+    fn new(user_id: i32, user_name: String, key: String, messages: Vec<DirectMessage>) -> Direct {
+        Direct {
+            user_id: user_id,
+            user_name: user_name,
+            key: key,
+            messages: messages,
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct DirectMessage {
+    user_id: i32,
+    message: String,
+}
+
+impl DirectMessage {
+    fn new(user_id: i32, message: String) -> DirectMessage {
+        DirectMessage {
+            user_id: user_id,
+            message: message,
+        }
+    }
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct AddDirect {
+    user_id: i32,
+    username: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct DeleteDirect {
+    user_id: i32,
+    recipient_id: i32,
+}
+
 fn structval<'v>(val: &String, min: usize, max: usize) -> form::Result<'v, ()> {
     let trimmed = val.trim();
     if trimmed.len() < min || trimmed.len() > max {
@@ -239,105 +289,109 @@ async fn messages<'r>(
 ) -> Result<ws::Channel<'r>, status::Custom<&'static str>> {
     use rocket::futures::{SinkExt, StreamExt};
 
-    if let Ok(_) = session.get().await {
-        let (tx, mut rx): (UnboundedSender<Message>, UnboundedReceiver<Message>) =
-            unbounded_channel();
-        users.write().await.insert(user_id, tx);
-        {
-            let group_write_lock = groups.write().await;
-            let mut groups = group_write_lock.write().await;
-
-            if !users.read().await.contains_key(&user_id) {
-                return Err(status::Custom(
-                    Status::InternalServerError,
-                    "error inserting message",
-                ));
-            }
-
-            if let Ok(groups_for_user) = rocket_chat::schema::rooms_users::table
-                .filter(rocket_chat::schema::rooms_users::user_id.eq(user_id))
-                .select(RoomUserDB::as_select())
-                .load(&mut rocket_chat::establish_connection())
+    if let Ok(Some(user)) = session.get().await {
+        if user.0 == user_id {
+            let (tx, mut rx): (UnboundedSender<Message>, UnboundedReceiver<Message>) =
+                unbounded_channel();
+            users.write().await.insert(user_id, tx);
             {
-                for group in groups_for_user {
-                    if let Some(group_members) = groups.get_mut(&group.room_id) {
-                        group_members.insert(user_id);
-                    } else {
-                        let mut new_group = HashSet::new();
-                        new_group.insert(user_id);
-                        groups.insert(group.room_id, new_group);
-                    }
-                }
-            }
-        }
-
-        Ok(ws.channel(move |mut stream| {
-        Box::pin(async move {
-            loop {
-                tokio::select! {
-                    Some(Ok(msg)) = stream.next() => {
-                        if let Message::Text(text) = msg {
-                            if let Ok(chat_message) = serde_json::from_str::<ChatMessage>(&text) {
-                                match chat_message {
-                                    ChatMessage::Direct { recipient, .. } => {
-                                        let users = users.read().await;
-                                        if let Some(sender) = users.get(&recipient) {
-                                            if let Err(err) = sender.send(Message::text(text.clone())) {
-                                                eprintln!("Failed to send message to recipient: {:?}", err);
-                                            }
-                                        }
-                                    },
-                                    ChatMessage::Group { group_id, .. } => {
-                                        let groups_lock = groups.read().await;
-                                        let groups = groups_lock.read().await;
-                                        if let Some(members) = groups.get(&group_id) {
-                                            let users = users.read().await;
-                                            for member in members {
-                                                if member != &user_id {
-                                                    if let Some(sender) = users.get(member) {
-                                                        if let Err(err) = sender.send(Message::text(text.clone())) {
-                                                            eprintln!("Failed to send message to group member: {:?}", err);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    },
-                                }
-                                save_msg_db(chat_message);
-                            } else {
-                                eprintln!("Failed to deserialize incoming message: {:?}", text);
-                            }
-                        }
-                    },
-                    Some(msg) = rx.recv() => {
-                        if stream.send(msg).await.is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            {
-                users.write().await.remove(&user_id);
                 let group_write_lock = groups.write().await;
                 let mut groups = group_write_lock.write().await;
+
+                if !users.read().await.contains_key(&user_id) {
+                    return Err(status::Custom(
+                        Status::InternalServerError,
+                        "error inserting message",
+                    ));
+                }
+
                 if let Ok(groups_for_user) = rocket_chat::schema::rooms_users::table
-                    .filter(rocket_chat::schema::rooms_users::user_id.eq(&user_id))
+                    .filter(rocket_chat::schema::rooms_users::user_id.eq(user_id))
                     .select(RoomUserDB::as_select())
                     .load(&mut rocket_chat::establish_connection())
                 {
                     for group in groups_for_user {
                         if let Some(group_members) = groups.get_mut(&group.room_id) {
-                            group_members.remove(&user_id);
+                            group_members.insert(user_id);
+                        } else {
+                            let mut new_group = HashSet::new();
+                            new_group.insert(user_id);
+                            groups.insert(group.room_id, new_group);
                         }
                     }
                 }
             }
 
-            Ok(())
-        })
-    }))
+            Ok(ws.channel(move |mut stream| {
+                Box::pin(async move {
+                    loop {
+                        tokio::select! {
+                            Some(Ok(msg)) = stream.next() => {
+                                if let Message::Text(text) = msg {
+                                    if let Ok(chat_message) = serde_json::from_str::<ChatMessage>(&text) {
+                                        match chat_message {
+                                            ChatMessage::Direct { recipient, .. } => {
+                                                let users = users.read().await;
+                                                if let Some(sender) = users.get(&recipient) {
+                                                    if let Err(err) = sender.send(Message::text(text.clone())) {
+                                                        eprintln!("Failed to send message to recipient: {:?}", err);
+                                                    }
+                                                }
+                                            },
+                                            ChatMessage::Group { group_id, .. } => {
+                                                let groups_lock = groups.read().await;
+                                                let groups = groups_lock.read().await;
+                                                if let Some(members) = groups.get(&group_id) {
+                                                    let users = users.read().await;
+                                                    for member in members {
+                                                        if member != &user_id {
+                                                            if let Some(sender) = users.get(member) {
+                                                                if let Err(err) = sender.send(Message::text(text.clone())) {
+                                                                    eprintln!("Failed to send message to group member: {:?}", err);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                        }
+                                        save_msg_db(chat_message);
+                                    } else {
+                                        eprintln!("Failed to deserialize incoming message: {:?}", text);
+                                    }
+                                }
+                            },
+                            Some(msg) = rx.recv() => {
+                                if stream.send(msg).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    {
+                        users.write().await.remove(&user_id);
+                        let group_write_lock = groups.write().await;
+                        let mut groups = group_write_lock.write().await;
+                        if let Ok(groups_for_user) = rocket_chat::schema::rooms_users::table
+                            .filter(rocket_chat::schema::rooms_users::user_id.eq(&user_id))
+                            .select(RoomUserDB::as_select())
+                            .load(&mut rocket_chat::establish_connection())
+                        {
+                            for group in groups_for_user {
+                                if let Some(group_members) = groups.get_mut(&group.room_id) {
+                                    group_members.remove(&user_id);
+                                }
+                            }
+                        }
+                    }
+
+                    Ok(())
+                })
+            }))
+        } else {
+            return Err(status::Custom(Status::Unauthorized, "no valid session"));
+        }
     } else {
         return Err(status::Custom(Status::Unauthorized, "no valid session"));
     }
@@ -595,9 +649,179 @@ fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>>
     }
 }
 
+#[post("/add-direct", data = "<form>")]
+async fn add_direct(
+    form: Form<AddDirect>,
+    session: Session<'_, (i32, i32, String)>,
+) -> Result<Json<UserId>, status::Custom<&'static str>> {
+    use rocket_chat::schema::directs::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(Some(user)) = session.get().await {
+        let userform = form.into_inner();
+        if user.0 == userform.user_id {
+            if let Ok(recipient) = rocket_chat::schema::users::table
+                .filter(rocket_chat::schema::users::username.eq(userform.username))
+                .select(UserDB::as_select())
+                .limit(1)
+                .load::<UserDB>(connection)
+            {
+                if let Ok(_) = diesel::insert_into(directs)
+                    .values((
+                        user1_id.eq(userform.user_id),
+                        user2_id.eq(recipient[0].id),
+                        aes_key.eq(generate_32_byte_random()),
+                    ))
+                    .execute(connection)
+                {
+                    Ok(Json(UserId {
+                        id: recipient[0].id,
+                    }))
+                } else {
+                    Err(status::Custom(
+                        Status::InternalServerError,
+                        "Database error",
+                    ))
+                }
+            } else {
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Database error",
+                ))
+            }
+        } else {
+            Err(status::Custom(
+                Status::Unauthorized,
+                "session not matching user",
+            ))
+        }
+    } else {
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
+    }
+}
+
+#[post("/delete-direct", data = "<form>")]
+async fn delete_direct(
+    form: Form<DeleteDirect>,
+    session: Session<'_, (i32, i32, String)>,
+) -> Result<(), status::Custom<&'static str>> {
+    use rocket_chat::schema::directs::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(Some(user)) = session.get().await {
+        let userform = form.into_inner();
+        if user.0 == userform.user_id {
+            if let Ok(_) = diesel::delete(
+                directs.filter(
+                    user1_id
+                        .eq(userform.user_id)
+                        .and(user2_id.eq(userform.recipient_id))
+                        .or(user1_id
+                            .eq(userform.recipient_id)
+                            .and(user2_id.eq(userform.user_id))),
+                ),
+            )
+            .execute(connection)
+            {
+                Ok(())
+            } else {
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Database error",
+                ))
+            }
+        } else {
+            Err(status::Custom(
+                Status::Unauthorized,
+                "session not matching user",
+            ))
+        }
+    } else {
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
+    }
+}
+
+#[post("/get-directs", data = "<form>")]
+async fn get_directs(
+    form: Form<GetPersonalChats>,
+    session: Session<'_, (i32, i32, String)>,
+) -> Result<Json<Vec<Direct>>, status::Custom<&'static str>> {
+    let userform = form.into_inner();
+    let rsa_key = userform.rsa_key;
+    let connection = &mut rocket_chat::establish_connection();
+    if let Ok(Some(user)) = session.get().await {
+        if user.0 == userform.user_id {
+            if let Ok(directs) = rocket_chat::schema::directs::table
+                .filter(
+                    rocket_chat::schema::directs::user1_id
+                        .eq(userform.user_id)
+                        .or(rocket_chat::schema::directs::user2_id.eq(userform.user_id)),
+                )
+                .select(DirectDB::as_select())
+                .load(connection)
+            {
+                if let Ok(recipient) = rocket_chat::schema::users::table
+                    .filter(rocket_chat::schema::users::id.eq(
+                        if directs[0].user1_id == userform.user_id {
+                            directs[0].user2_id
+                        } else {
+                            directs[0].user1_id
+                        },
+                    ))
+                    .select(UserDB::as_select())
+                    .limit(1)
+                    .load::<UserDB>(connection)
+                {
+                    let mut pub_directs: Vec<Direct> = Vec::new();
+                    for direct in directs {
+                        if let Ok(messages) = DirectMessageDB::belonging_to(&direct)
+                            .select(DirectMessageDB::as_select())
+                            .load(connection)
+                        {
+                            pub_directs.push(Direct::new(
+                                recipient[0].id,
+                                recipient[0].username.clone(),
+                                encrypt_rsa(direct.aes_key, rsa_key.clone()).unwrap(),
+                                messages
+                                    .iter()
+                                    .map(|m| DirectMessage::new(m.sender_id, m.message.clone()))
+                                    .collect::<Vec<DirectMessage>>(),
+                            ));
+                        } else {
+                            return Err(status::Custom(
+                                Status::InternalServerError,
+                                "Database error",
+                            ));
+                        }
+                    }
+
+                    Ok(Json(pub_directs))
+                } else {
+                    Err(status::Custom(
+                        Status::InternalServerError,
+                        "Database error",
+                    ))
+                }
+            } else {
+                Err(status::Custom(
+                    Status::InternalServerError,
+                    "Database error",
+                ))
+            }
+        } else {
+            Err(status::Custom(
+                Status::Unauthorized,
+                "session not matching user",
+            ))
+        }
+    } else {
+        Err(status::Custom(Status::Unauthorized, "no valid session"))
+    }
+}
+
 #[post("/get-personal-rooms", data = "<form>")]
 async fn get_rooms(
-    form: Form<GetRoomsUser>,
+    form: Form<GetPersonalChats>,
     session: Session<'_, (i32, i32, String)>,
 ) -> Result<Json<Vec<PubRoom>>, status::Custom<&'static str>> {
     let userform = form.into_inner();
@@ -1004,11 +1228,36 @@ fn save_msg_db(msg: ChatMessage) {
 
     match msg {
         ChatMessage::Direct {
-            sender: _,
-            recipient: _,
-            content: _,
+            sender,
+            recipient,
+            content,
         } => {
-            todo!();
+            if let Ok(direct) = rocket_chat::schema::directs::table
+                .filter(
+                    rocket_chat::schema::directs::user1_id
+                        .eq(sender)
+                        .or(rocket_chat::schema::directs::user2_id.eq(sender)),
+                )
+                .filter(
+                    rocket_chat::schema::directs::user1_id
+                        .eq(recipient)
+                        .or(rocket_chat::schema::directs::user2_id.eq(recipient)),
+                )
+                .select(DirectDB::as_select())
+                .load::<DirectDB>(connection)
+            {
+                if let Ok(_) =
+                    diesel::insert_into(rocket_chat::schema::direct_messages::dsl::direct_messages)
+                        .values((
+                            rocket_chat::schema::direct_messages::chat_id.eq(direct[0].id),
+                            rocket_chat::schema::direct_messages::sender_id.eq(sender),
+                            rocket_chat::schema::direct_messages::message.eq(content),
+                        ))
+                        .execute(connection)
+                {
+                    return;
+                }
+            }
         }
         ChatMessage::Group {
             sender_id,
@@ -1096,6 +1345,9 @@ fn rocket() -> _ {
                 add_room,
                 remove_room,
                 search_rooms,
+                add_direct,
+                delete_direct,
+                get_directs,
                 get_rooms,
                 login,
                 signup,
