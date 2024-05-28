@@ -1,3 +1,4 @@
+/* trunk-ignore-all(prettier) */
 * {
     font-size: 18px;
 }
@@ -193,7 +194,8 @@ main {
     color: #fff;
 }
 
-#room-list {
+#room-list,
+#user-list {
     display: flex;
     flex-direction: column;
     overflow: auto;
@@ -203,7 +205,12 @@ main {
     margin-left: 3px;
 }
 
-.side-room {
+#room-list {
+    display: none;
+}
+
+.side-room,
+.side-user {
     position: relative;
     width: 100%;
     display: flex;
@@ -214,7 +221,8 @@ main {
     font-weight: 300;
 }
 
-.room {
+.room,
+.user {
     flex: 1;
     height: 100%;
     margin-right: 5px;
@@ -225,7 +233,8 @@ main {
     cursor: pointer;
 }
 
-.remove-room {
+.remove-room,
+.remove-user {
     width: 50px;
     height: 50px;
     background-color: rgba(255, 255, 255, 0.07);
@@ -239,6 +248,35 @@ main {
 #sidebar input.active {
     background-color: rgba(255, 255, 255, 0.19);
     font-weight: bold;
+}
+
+.radio-container {
+    display: flex;
+    margin-bottom: 5px;
+    height: 24px;
+}
+
+.radio-container input[type="radio"] {
+    display: none;
+}
+
+.radio-container label {
+    text-align: center;
+    margin-top: 0;
+    flex-grow: 1;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+    line-height: 24px;
+}
+
+.radio-container input[type="radio"]:checked + label {
+    background-color: #6f7479;
+    color: white;
+}
+
+.radio-container label:hover {
+    background-color: #636363;
 }
 
 #confirm-remove {

@@ -1,4 +1,7 @@
+/* trunk-ignore-all(prettier) */
 var STATE = {
+    ru: 1,
+    recipient_id: -1,
     room_id: -1,
     user_id: -1,
     user: "",
@@ -138,13 +141,140 @@ function changeRoom(id) {
     });
 
     STATE.rooms[id].messages.forEach((data) =>
-        addMessage(id, data.user_id, data.username, data.message)
+        addMessageGroup(id, data.user_id, data.username, data.message)
+    );
+}
+
+function addUser(id, name, key) {
+    if (STATE.users[id]) {
+        changeUser(id);
+        return false;
+    }
+
+    let userListDiv = document.getElementById("user-list");
+    let node = document.getElementById("user").content.cloneNode(true);
+    let user = node.querySelector(".user");
+    let button = node.querySelector(".remove-user");
+    user.addEventListener("click", () => changeUser(id));
+    button.addEventListener("click", () => confirmRemoveUser(name));
+    user.value = name;
+    user.dataset.name = name;
+    user.dataset.id = id;
+    userListDiv.appendChild(node);
+
+    STATE.users[id] = { name: name, key: key, messages: [] };
+    changeUser(id);
+    return true;
+}
+
+function removeUser(name) {
+    let userListDiv = document.getElementById("room-list");
+    let id = userListDiv.querySelector(`.room[data-name='${name}']`).dataset.id;
+    if (!STATE.users[id] || userListDiv.querySelectorAll(".user").length <= 1) {
+        return false;
+    }
+
+    const recipient_id = id;
+    const user_id = STATE.user_id;
+    if (STATE.connected) {
+        fetch("/remove-direct", {
+            method: "POST",
+            body: new URLSearchParams({
+                recipient_id,
+                user_id,
+            }),
+        })
+            .then((response) => {
+                if (response.ok) {
+                    let users = userListDiv.querySelectorAll(".user");
+                    if (
+                        users[0].dataset.id == id &&
+                        STATE.recipient_id == id &&
+                        users.length > 1
+                    )
+                        changeUser(users[1].dataset.id);
+                    else if (STATE.recipient_id == id)
+                        changeRoom(users[0].dataset.id);
+
+                    let node = userListDiv.querySelector(
+                        `.user[data-id='${id}']`
+                    ).parentElement;
+                    userListDiv.removeChild(node);
+                    delete STATE.users[id];
+                    return true;
+                } else {
+                    return response.text().then((text) => {
+                        throw new Error(text);
+                    });
+                }
+            })
+            .catch((err) => {
+                console.error(err);
+                return false;
+            });
+    }
+}
+
+function changeUser(id) {
+    if (STATE.recipient_id == id) return;
+
+    let userListDiv = document.getElementById("user-list");
+    let messagesDiv = document.getElementById("messages");
+    if (userListDiv.querySelectorAll(".user").length == 1) {
+        userListDiv
+            .querySelector(`.user[data-id='${id}']`)
+            .classList.add("active");
+    } else {
+        let newUser = userListDiv.querySelector(`.user[data-id='${id}']`);
+        let parentNewUser = newUser.parentElement;
+        let newUserRemove = parentNewUser.querySelector(".remove-user");
+        let oldUser = userListDiv.querySelector(
+            `.user[data-id='${STATE.recipient_id}']`
+        );
+        let parentOldUser = oldUser.parentElement;
+        let oldUserRemove = parentOldUser.querySelector(".remove-user");
+        if (!newUser || !oldUser) return;
+
+        oldUser.classList.remove("active");
+        newUser.classList.add("active");
+        oldUserRemove.classList.remove("active");
+        newUserRemove.classList.add("active");
+    }
+
+    STATE.recipient_id = id;
+    messagesDiv.querySelectorAll(".container-message").forEach((msg) => {
+        messagesDiv.removeChild(msg);
+    });
+
+    STATE.users[id].messages.forEach((data) =>
+        addMessageUser(id, data.username, data.message)
     );
 }
 
 // Add `message` from `username` to `room`. If `push`, then actually store the
 // message. If the current room is `room`, render the message.
-function addMessage(room_id, _user_id, username, message, push = false) {
+function addMessageDirect(recipient_id, username, message, push = false) {
+    if (push) {
+        STATE.users[recipient_id].messages.push({ username, message });
+    }
+
+    if (STATE.recipient_id == recipient_id) {
+        var node = document.getElementById("message").content.cloneNode(true);
+        node.querySelector(".message .username").textContent = username;
+        node.querySelector(".message .username").style.color =
+            hashColor(username);
+        node.querySelector(".message .text").textContent = message;
+        if (username == STATE.user) {
+            node.querySelector(".container-message").classList.add("minemess");
+        }
+        document.getElementById("messages").appendChild(node);
+        setTimeout(scrollToBottom, 100);
+    }
+}
+
+// Add `message` from `username` to `room`. If `push`, then actually store the
+// message. If the current room is `room`, render the message.
+function addMessageGroup(room_id, _user_id, username, message, push = false) {
     if (push) {
         STATE.rooms[room_id].messages.push({ username, message });
     }
@@ -185,7 +315,7 @@ function subscribe(uri) {
             )
                 return;
             if (STATE.rooms[msg.room_id])
-                addMessage(
+                addMessageGroup(
                     msg.room_id,
                     msg.user_id,
                     msg.user_name,
@@ -309,13 +439,59 @@ function getRooms() {
                 parsed.forEach((room) => {
                     addRoom(room.room_id, room.room_name, decryptRsa(room.key));
                     room.messages.forEach((message) => {
-                        addMessage(
+                        addMessageGroup(
                             message.room_id,
                             message.user_id,
                             message.user_name,
                             decryptAes(
                                 message.message,
                                 STATE.rooms[message.room_id].key
+                            ),
+                            true
+                        );
+                    });
+                });
+                return;
+            }
+            return;
+        })
+        .catch((err) => {
+            console.error(err);
+        });
+}
+
+function getDirects() {
+    const user_id = STATE.user_id;
+    const rsa_key = forge.pki.publicKeyToPem(STATE.clientKeys.publicKey);
+    fetch("/get-directs", {
+        method: "POST",
+        body: new URLSearchParams({ user_id, rsa_key }),
+    })
+        .then((response) => {
+            if (response.ok) {
+                return response.text();
+            } else {
+                return response.text().then((text) => {
+                    throw new Error(text);
+                });
+            }
+        })
+        .then((data) => {
+            const parsed = JSON.parse(data);
+            if (parsed.length > 0) {
+                parsed.forEach((direct) => {
+                    addUser(
+                        direct.recipient_id,
+                        direct.username,
+                        decryptRsa(direct.key)
+                    );
+                    direct.messages.forEach((message) => {
+                        addMessageDirect(
+                            message.recipient_id,
+                            message.username,
+                            decryptAes(
+                                message.message,
+                                STATE.users[message.recipient_id].key
                             ),
                             true
                         );
@@ -348,6 +524,40 @@ function setup() {
             STATE.user_id = data.id;
             STATE.user = data.username;
             document.title += " | " + STATE.user;
+
+            ws = new WebSocket(
+                "ws://" + location.host + "/messages/" + STATE.user_id
+            );
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if ("Group" in msg) {
+                    addMessageGroup(
+                        msg.Group.group_id,
+                        msg.Group.sender_id,
+                        msg.Group.sender_name,
+                        decryptAes(
+                            msg.Group.content,
+                            STATE.rooms[msg.Group.group_id].key
+                        ),
+                        true
+                    );
+                } else if ("Direct" in msg) {
+                    addMessageDirect(
+                        msg.Direct.recipient_id,
+                        msg.Direct.sender_name,
+                        decryptAes(
+                            msg.Direct.content,
+                            STATE.users[msg.Direct.recipient_id].key
+                        ),
+                        true
+                    );
+                } else {
+                    console.error("unknown message type");
+                }
+            };
+
+            // getDirects();
             getRooms();
         })
         .catch((err) => {
@@ -356,32 +566,31 @@ function setup() {
     return true;
 }
 
+function swapUsersRooms(i) {
+    if (i == 1) {
+        document.getElementById("user-list").style.display = "block";
+        document.getElementById("room-list").style.display = "none";
+    } else if (i == 2) {
+        document.getElementById("user-list").style.display = "none";
+        document.getElementById("room-list").style.display = "block";
+    }
+}
+
 function init() {
     // Generate RSA keys for the client
     STATE.clientKeys = forge.pki.rsa.generateKeyPair({ bits: 2048 });
 
     setup();
-    setTimeout(() => {
-        ws = new WebSocket(
-            "ws://" + location.host + "/messages/" + STATE.user_id
-        );
 
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            if ("Group" in msg) {
-                addMessage(
-                    msg.Group.group_id,
-                    msg.Group.sender_id,
-                    msg.Group.sender_name,
-                    decryptAes(
-                        msg.Group.content,
-                        STATE.rooms[msg.Group.group_id].key
-                    ),
-                    true
-                );
+    const radioButtons = document.querySelectorAll('input[name="options"]');
+
+    radioButtons.forEach((radio) => {
+        radio.addEventListener("change", () => {
+            if (radio.checked) {
+                swapUsersRooms(radio.dataset.toggle);
             }
-        };
-    }, 300);
+        });
+    });
 
     // Set up the handler to post a message.
     document.getElementById("new-message").addEventListener("submit", (e) => {
@@ -407,7 +616,7 @@ function init() {
                 JSON.stringify({ sender_id, sender_name, group_id, content }) +
                 " }"
         );
-        addMessage(
+        addMessageGroup(
             group_id,
             sender_id,
             sender_name,
@@ -513,7 +722,7 @@ function init() {
                         decryptRsa(parsed.key)
                     );
                     parsed.messages.forEach((message) => {
-                        addMessage(
+                        addMessageGroup(
                             message.room,
                             message.username,
                             decryptAes(
