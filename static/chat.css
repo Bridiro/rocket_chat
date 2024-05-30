@@ -530,7 +530,8 @@ main {
 }
 
 #new-room-name,
-#new-room-password {
+#new-room-password,
+#new-user-name {
     display: block;
     height: 50px;
     width: 100%;
@@ -542,7 +543,8 @@ main {
     font-weight: 300;
 }
 
-#add-room {
+#add-room,
+#add-user {
     background-color: rgba(255, 255, 255, 0.13);
     position: absolute;
     transform: translate(-50%, -50%);
@@ -558,7 +560,8 @@ main {
     display: none;
 }
 
-#add-button {
+#add-button,
+#add-user-button {
     margin-top: 40px;
     width: 100%;
     background-color: #ffffff;
@@ -570,7 +573,8 @@ main {
     cursor: pointer;
 }
 
-#add-cancel {
+#add-cancel,
+#add-user-cancel {
     margin-top: 10;
     width: 100%;
     background-color: rgba(255, 255, 255, 0);

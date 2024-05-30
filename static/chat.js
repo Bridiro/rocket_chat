@@ -1,11 +1,11 @@
 /* trunk-ignore-all(prettier) */
 var STATE = {
-    ru: 1,
     recipient_id: -1,
     room_id: -1,
     user_id: -1,
     user: "",
     rooms: {},
+    users: {},
     connected: false,
 };
 
@@ -155,6 +155,7 @@ function addUser(id, name, key) {
     let node = document.getElementById("user").content.cloneNode(true);
     let user = node.querySelector(".user");
     let button = node.querySelector(".remove-user");
+
     user.addEventListener("click", () => changeUser(id));
     button.addEventListener("click", () => confirmRemoveUser(name));
     user.value = name;
@@ -247,24 +248,48 @@ function changeUser(id) {
     });
 
     STATE.users[id].messages.forEach((data) =>
-        addMessageUser(id, data.username, data.message)
+        addMessageDirect(id, data.sender_id, data.message)
+    );
+}
+
+function swapRoomsToUsersMessages() {
+    let messagesDiv = document.getElementById("messages");
+    messagesDiv.querySelectorAll(".container-message").forEach((msg) => {
+        messagesDiv.removeChild(msg);
+    });
+
+    STATE.users[STATE.recipient_id].messages.forEach((data) =>
+        addMessageDirect(STATE.recipient_id, data.sender_id, data.message)
+    );
+}
+
+function swapUsersToRoomMessages() {
+    let messagesDiv = document.getElementById("messages");
+    messagesDiv.querySelectorAll(".container-message").forEach((msg) => {
+        messagesDiv.removeChild(msg);
+    });
+
+    STATE.rooms[STATE.room_id].messages.forEach((data) =>
+        addMessageGroup(
+            STATE.room_id,
+            data.user_id,
+            data.username,
+            data.message
+        )
     );
 }
 
 // Add `message` from `username` to `room`. If `push`, then actually store the
 // message. If the current room is `room`, render the message.
-function addMessageDirect(recipient_id, username, message, push = false) {
+function addMessageDirect(chat_id, sender_id, message, push = false) {
     if (push) {
-        STATE.users[recipient_id].messages.push({ username, message });
+        STATE.users[chat_id].messages.push({ sender_id, message });
     }
 
-    if (STATE.recipient_id == recipient_id) {
-        var node = document.getElementById("message").content.cloneNode(true);
-        node.querySelector(".message .username").textContent = username;
-        node.querySelector(".message .username").style.color =
-            hashColor(username);
+    if (STATE.recipient_id == chat_id) {
+        var node = document.getElementById("direct").content.cloneNode(true);
         node.querySelector(".message .text").textContent = message;
-        if (username == STATE.user) {
+        if (sender_id == STATE.user_id) {
             node.querySelector(".container-message").classList.add("minemess");
         }
         document.getElementById("messages").appendChild(node);
@@ -368,6 +393,15 @@ function closeRoomForm() {
     document.getElementById("check-password").disabled = false;
     document.getElementById("new-room-name").value = "";
     document.getElementById("new-room-password").value = "";
+}
+
+function openUserForm() {
+    document.getElementById("add-user").style.display = "block";
+}
+
+function closeUserForm() {
+    document.getElementById("new-user-name").value = "";
+    document.getElementById("add-user").style.display = "none";
 }
 
 function encryptAes(message, key) {
@@ -480,18 +514,19 @@ function getDirects() {
             const parsed = JSON.parse(data);
             if (parsed.length > 0) {
                 parsed.forEach((direct) => {
+                    console.log(direct.user_id);
                     addUser(
-                        direct.recipient_id,
-                        direct.username,
+                        direct.user_id,
+                        direct.user_name,
                         decryptRsa(direct.key)
                     );
                     direct.messages.forEach((message) => {
                         addMessageDirect(
-                            message.recipient_id,
-                            message.username,
+                            direct.user_id,
+                            message.user_id,
                             decryptAes(
                                 message.message,
-                                STATE.users[message.recipient_id].key
+                                STATE.users[direct.user_id].key
                             ),
                             true
                         );
@@ -540,25 +575,27 @@ function setup() {
                             msg.Group.content,
                             STATE.rooms[msg.Group.group_id].key
                         ),
-                        true
+                        (document.getElementById("room-list").style.display =
+                            "block" ? true : false)
                     );
                 } else if ("Direct" in msg) {
                     addMessageDirect(
-                        msg.Direct.recipient_id,
-                        msg.Direct.sender_name,
+                        msg.Direct.sender,
+                        msg.Direct.sender,
                         decryptAes(
                             msg.Direct.content,
-                            STATE.users[msg.Direct.recipient_id].key
+                            STATE.users[msg.Direct.sender].key
                         ),
-                        true
+                        (document.getElementById("user-list").style.display =
+                            "block" ? true : false)
                     );
                 } else {
                     console.error("unknown message type");
                 }
             };
 
-            // getDirects();
             getRooms();
+            getDirects();
         })
         .catch((err) => {
             console.error(err);
@@ -570,17 +607,25 @@ function swapUsersRooms(i) {
     if (i == 1) {
         document.getElementById("user-list").style.display = "block";
         document.getElementById("room-list").style.display = "none";
+        swapRoomsToUsersMessages();
     } else if (i == 2) {
         document.getElementById("user-list").style.display = "none";
         document.getElementById("room-list").style.display = "block";
+        swapUsersToRoomMessages();
     }
 }
 
 function init() {
+    document.getElementById("user-list").style.display = "block";
     // Generate RSA keys for the client
     STATE.clientKeys = forge.pki.rsa.generateKeyPair({ bits: 2048 });
 
     setup();
+
+    setTimeout(() => {
+        swapUsersRooms(2);
+        swapUsersRooms(1);
+    }, 1000);
 
     const radioButtons = document.querySelectorAll('input[name="options"]');
 
@@ -602,27 +647,58 @@ function init() {
             return;
         }
 
-        const sender_id = STATE.user_id;
-        const sender_name = STATE.user;
-        const group_id = STATE.room_id;
-        const content = encryptAes(
-            messageField.value.trim(),
-            STATE.rooms[STATE.room_id].key
-        );
-        if (!content || !sender_name) return;
+        if (document.getElementById("user-list").style.display == "block") {
+            const sender = STATE.user_id;
+            const recipient = STATE.recipient_id;
+            const content = encryptAes(
+                messageField.value.trim(),
+                STATE.users[STATE.recipient_id].key
+            );
+            if (!content) return;
 
-        ws.send(
-            '{ "Group" :' +
-                JSON.stringify({ sender_id, sender_name, group_id, content }) +
-                " }"
-        );
-        addMessageGroup(
-            group_id,
-            sender_id,
-            sender_name,
-            decryptAes(content, STATE.rooms[group_id].key),
-            true
-        );
+            ws.send(
+                '{ "Direct" :' +
+                    JSON.stringify({ sender, recipient, content }) +
+                    " }"
+            );
+            addMessageDirect(
+                recipient,
+                sender,
+                decryptAes(content, STATE.users[recipient].key),
+                true
+            );
+        } else if (
+            document.getElementById("room-list").style.display == "block"
+        ) {
+            const sender_id = STATE.user_id;
+            const sender_name = STATE.user;
+            const group_id = STATE.room_id;
+            const content = encryptAes(
+                messageField.value.trim(),
+                STATE.rooms[STATE.room_id].key
+            );
+            if (!content || !sender_name) return;
+
+            ws.send(
+                '{ "Group" :' +
+                    JSON.stringify({
+                        sender_id,
+                        sender_name,
+                        group_id,
+                        content,
+                    }) +
+                    " }"
+            );
+            addMessageGroup(
+                group_id,
+                sender_id,
+                sender_name,
+                decryptAes(content, STATE.rooms[group_id].key),
+                true
+            );
+        } else {
+            console.error("unknown message type");
+        }
 
         messageField.value = "";
     });
@@ -633,38 +709,42 @@ function init() {
         .addEventListener("click", (e) => {
             e.preventDefault();
 
-            let roomDataList = document.getElementById("rooms-list");
-            if (STATE.connected) {
-                fetch("/get-rooms", {
-                    method: "GET",
-                })
-                    .then((response) => {
-                        if (response.ok) {
-                            return response.text();
-                        } else {
-                            return response.text().then((text) => {
-                                throw new Error(text);
+            if (document.getElementById("room-list").style.display == "block") {
+                let roomDataList = document.getElementById("rooms-list");
+                if (STATE.connected) {
+                    fetch("/get-rooms", {
+                        method: "GET",
+                    })
+                        .then((response) => {
+                            if (response.ok) {
+                                return response.text();
+                            } else {
+                                return response.text().then((text) => {
+                                    throw new Error(text);
+                                });
+                            }
+                        })
+                        .then((data) => {
+                            available_rooms = JSON.parse(data);
+                            roomDataList.innerHTML = "";
+                            available_rooms.forEach((room) => {
+                                roomDataList.innerHTML +=
+                                    '<option value="' +
+                                    room.room_name +
+                                    '" data-rp="' +
+                                    room.require_password +
+                                    '" >';
                             });
-                        }
-                    })
-                    .then((data) => {
-                        available_rooms = JSON.parse(data);
-                        roomDataList.innerHTML = "";
-                        available_rooms.forEach((room) => {
-                            roomDataList.innerHTML +=
-                                '<option value="' +
-                                room.room_name +
-                                '" data-rp="' +
-                                room.require_password +
-                                '" >';
+                        })
+                        .catch((err) => {
+                            console.error(err);
                         });
-                    })
-                    .catch((err) => {
-                        console.error(err);
-                    });
-            }
+                }
 
-            openRoomForm();
+                openRoomForm();
+            } else {
+                openUserForm();
+            }
         });
 
     // Set up the add room handler
@@ -743,6 +823,40 @@ function init() {
     // Set up the close popup handler
     document.getElementById("add-cancel").addEventListener("click", () => {
         closeRoomForm();
+    });
+
+    document.getElementById("add-user").addEventListener("submit", (e) => {
+        e.preventDefault();
+
+        const user_id = STATE.user_id;
+        const username = document.getElementById("new-user-name").value.trim();
+        const rsa_key = forge.pki.publicKeyToPem(STATE.clientKeys.publicKey);
+        if (username == "") {
+            document.getElementById("new-user-name").value = "";
+            return;
+        }
+
+        fetch("/add-direct", {
+            method: "POST",
+            body: new URLSearchParams({ user_id, username, rsa_key }),
+        })
+            .then((response) => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    return response.text().then((text) => {
+                        throw new Error(text);
+                    });
+                }
+            })
+            .then((data) => {
+                const parsed = JSON.parse(data);
+                addUser(parsed.id, username, decryptRsa(parsed.key));
+                closeUserForm();
+            })
+            .catch((err) => {
+                console.error(err);
+            });
     });
 
     // Set up confirm remove room
