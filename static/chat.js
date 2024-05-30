@@ -859,6 +859,10 @@ function init() {
             });
     });
 
+    document.getElementById("add-user-cancel").addEventListener("click", () => {
+        closeUserForm();
+    });
+
     // Set up confirm remove room
     document
         .getElementById("confirm-remove")
