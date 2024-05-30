@@ -243,6 +243,14 @@ impl DirectMessage {
 struct AddDirect {
     user_id: i32,
     username: String,
+    rsa_key: String,
+}
+
+#[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "rocket::serde")]
+struct DirectToAdd {
+    id: i32,
+    key: String,
 }
 
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize, PartialEq)]
@@ -442,6 +450,7 @@ async fn add_room(
     form: Form<AddRoom>,
     state: &State<AppState>,
     session: Session<'_, (i32, i32, String)>,
+    groups: &State<Arc<RwLock<Groups>>>,
 ) -> Result<Json<PubRoom>, status::Custom<&'static str>> {
     use rocket_chat::schema::rooms::dsl::*;
     use rocket_chat::schema::rooms_users::dsl::*;
@@ -475,6 +484,15 @@ async fn add_room(
                             ))
                             .execute(connection);
                         if result == Ok(1) {
+                            let group_write_lock = groups.write().await;
+                            let mut groups = group_write_lock.write().await;
+                            if let Some(group_members) = groups.get_mut(&r.id) {
+                                group_members.insert(room.user_id);
+                            } else {
+                                let mut new_group = HashSet::new();
+                                new_group.insert(room.user_id);
+                                groups.insert(r.id, new_group);
+                            }
                             if let Ok(enc) =
                                 encrypt_rsa(r.aes_key.clone(), room.rsa_client_key.clone())
                             {
@@ -558,6 +576,11 @@ async fn add_room(
                     ))
                     .execute(connection);
                 if insert_room == Ok(1) && insert_room_user == Ok(1) {
+                    let group_write_lock = groups.write().await;
+                    let mut groups = group_write_lock.write().await;
+                    let mut new_group = HashSet::new();
+                    new_group.insert(room.user_id);
+                    groups.insert(*inserted_id.as_ref().unwrap(), new_group);
                     if let Ok(enc) = encrypt_rsa(key, room.rsa_client_key) {
                         return Ok(Json(PubRoom::new(
                             inserted_id.unwrap(),
@@ -595,6 +618,7 @@ async fn add_room(
 async fn remove_room(
     form: Form<ToRemoveRoom>,
     session: Session<'_, (i32, i32, String)>,
+    groups: &State<Arc<RwLock<Groups>>>,
 ) -> Result<(), status::Custom<&'static str>> {
     use rocket_chat::schema::rooms_users::dsl::*;
 
@@ -610,6 +634,11 @@ async fn remove_room(
             )
             .execute(connection)
             {
+                let group_write_lock = groups.write().await;
+                let mut groups = group_write_lock.write().await;
+                if let Some(group_members) = groups.get_mut(&room) {
+                    group_members.remove(&for_user);
+                }
                 Ok(())
             } else {
                 Err(status::Custom(Status::Unauthorized, "can't"))
@@ -653,7 +682,7 @@ fn search_rooms() -> Result<Json<Vec<SearchRoom>>, status::Custom<&'static str>>
 async fn add_direct(
     form: Form<AddDirect>,
     session: Session<'_, (i32, i32, String)>,
-) -> Result<Json<UserId>, status::Custom<&'static str>> {
+) -> Result<Json<DirectToAdd>, status::Custom<&'static str>> {
     use rocket_chat::schema::directs::dsl::*;
     let connection = &mut rocket_chat::establish_connection();
 
@@ -666,16 +695,18 @@ async fn add_direct(
                 .limit(1)
                 .load::<UserDB>(connection)
             {
+                let key = generate_32_byte_random();
                 if let Ok(_) = diesel::insert_into(directs)
                     .values((
                         user1_id.eq(userform.user_id),
                         user2_id.eq(recipient[0].id),
-                        aes_key.eq(generate_32_byte_random()),
+                        aes_key.eq(&key),
                     ))
                     .execute(connection)
                 {
-                    Ok(Json(UserId {
+                    Ok(Json(DirectToAdd {
                         id: recipient[0].id,
+                        key: encrypt_rsa(key, userform.rsa_key).unwrap(),
                     }))
                 } else {
                     Err(status::Custom(

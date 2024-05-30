@@ -55,8 +55,23 @@
                 <input type="button" id="add-cancel" value="Cancel" />
             </form>
 
+            <form id="add-user">
+                <h3>Add user</h3>
+                <label for="new-user-name">Username</label>
+                <input
+                    type="text"
+                    name="name"
+                    id="new-user-name"
+                    autocomplete="off"
+                    placeholder="Username"
+                    maxlength="29"
+                />
+                <input type="submit" id="add-user-button" value="Add" />
+                <input type="button" id="add-user-cancel" value="Cancel" />
+            </form>
+
             <form id="confirm-remove">
-                <h3>Remove room:</h3>
+                <h3>Remove:</h3>
                 <br />
                 <h3 id="room-name-remove"></h3>
                 <input
@@ -164,6 +179,14 @@
                         <div class="container-message">
                             <div class="message">
                                 <span class="username"></span>
+                                <span class="text"></span>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template id="direct">
+                        <div class="container-message">
+                            <div class="message">
                                 <span class="text"></span>
                             </div>
                         </div>
