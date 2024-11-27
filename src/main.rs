@@ -894,6 +894,29 @@ async fn chat_page(
 
 #[launch]
 fn rocket() -> _ {
+    use rocket_chat::schema::rooms::dsl::*;
+    let connection = &mut rocket_chat::establish_connection();
+
+    if let Ok(roomsdb) = rooms
+        .filter(room_name.eq("lobby"))
+        .select(RoomDB::as_select())
+        .load(connection)
+    {
+        if roomsdb.len() == 0 {
+            let key = generate_32_byte_random();
+            let sale = generate_32_byte_random();
+            let _ = diesel::insert_into(rooms)
+                .values((
+                    room_name.eq("lobby"),
+                    require_password.eq(false),
+                    hidden_room.eq(false),
+                    aes_key.eq(key),
+                    salt.eq(sale),
+                ))
+                .execute(connection);
+        }
+    }
+
     let memory_store: MemoryStore<(i32, i32, String)> = MemoryStore::default();
     let store: SessionStore<(i32, i32, String)> = SessionStore {
         store: Box::new(memory_store),
