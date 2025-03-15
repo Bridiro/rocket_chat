@@ -25,7 +25,7 @@ use rocket::{
     Shutdown, State,
 };
 use rocket_chat::models::*;
-use rocket_session_store::{memory::MemoryStore, CookieConfig, Session, SessionStore};
+use rocket_session_store::{memory::MemoryStore, Session, SessionStore};
 use rsa::{
     pkcs1::EncodeRsaPublicKey,
     pkcs8::{DecodePublicKey, LineEnding},
@@ -36,6 +36,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{error::Error, path::PathBuf, sync::Mutex, time::Duration};
 use ws::Message;
+use rocket::http::private::cookie::CookieBuilder;
 
 const PEPPER: &str = "Zk4pGkvF9n5FPXSvrccl0XR33ach0+Vf/rliGZUUc+U=";
 
@@ -1373,7 +1374,7 @@ fn rocket() -> _ {
         store: Box::new(memory_store),
         name: "token".into(),
         duration: Duration::from_secs(3600 * 24 * 3),
-        cookie: CookieConfig::default(),
+        cookie_builder: CookieBuilder::new("", "").path("/"),
     };
 
     let users: Users = Arc::new(RwLock::new(HashMap::new()));
